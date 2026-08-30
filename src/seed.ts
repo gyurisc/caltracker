@@ -3,6 +3,7 @@ import { addDays, localDate, localTime, weekdayOf } from './config.ts'
 import { db, ensureDay, addFoods, type NewFood } from './db.ts'
 import { defaultActivityFor } from './nutrition.ts'
 import { parseMessage } from './parse.ts'
+import { vocabTable } from './vocab.ts'
 
 const MENUS = [
   ['black coffee', '3 eggs', 'yogurt 200g', 'chicken 220g cooked', 'rice 250g', 'olive oil 14g', 'whey', 'banana', 'minced meat 150g cooked'],
@@ -43,7 +44,7 @@ export function seedSampleData(days = 14, end: string = localDate()): number {
       const items: NewFood[] = []
       let seq = 0
       menu.forEach((text, n) => {
-        const parsed = parseMessage(text)
+        const parsed = parseMessage(text, undefined, vocabTable())
         if (!parsed.ok) return
         for (const item of parsed.items) {
           items.push({

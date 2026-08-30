@@ -2,13 +2,14 @@
 import { localDate, localTime } from './config.ts'
 import { addFoods, type FoodRow, logEvent } from './db.ts'
 import { parseMessage } from './parse.ts'
+import { vocabTable } from './vocab.ts'
 
 export type LogOutcome =
   | { ok: true; rows: FoodRow[] }
   | { ok: false; unmatched: string[] }
 
 export function logText(text: string, opts: { date?: string; time?: string } = {}): LogOutcome {
-  const parsed = parseMessage(text)
+  const parsed = parseMessage(text, undefined, vocabTable())
   if (!parsed.ok) {
     logEvent('error', { kind: 'parse_miss', text, unmatched: parsed.unmatched })
     return { ok: false, unmatched: parsed.unmatched }

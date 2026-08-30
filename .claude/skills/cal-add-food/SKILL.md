@@ -44,7 +44,10 @@ is fine when weight does not change.
 
 ## 5. Add the row
 
-In `FOOD_TABLE` (`src/parse.ts`), near similar foods. List aliases **plural first**
+In `SEED_FOODS` (`src/foods.ts`), near similar foods. The live vocabulary is the
+`vocab` table in SQLite; `src/foods.ts` only seeds a fresh database, so after editing
+it run **`pnpm vocab:sync`** to upsert the change into the running table. Skipping the
+sync is the new silent failure: tests pass, the bot still refuses. List aliases **plural first**
 where both exist — `ALIAS_INDEX` sorts longest-first, so `pancakes` must be able to win
 over `pancake`. Add a one-line comment naming the source or portion assumption.
 
@@ -95,20 +98,18 @@ for (const m of ['pancake','2 pancakes','pancake and 2 eggs']) {
 Check a **combination** with an existing food, not just the new word alone. Two real bugs
 came from a new food stealing a neighbour's weight.
 
-## 9. Restart the bot
+## 9. Restart only if you changed code
 
-`FOOD_TABLE` is read into memory at startup, so a running bot keeps refusing the new
-word until restarted. `pnpm start` has no watcher.
+The vocabulary lives in SQLite and the cache is invalidated on write, so a row added
+through `saveFood()` is live on the next message — **no restart**. A restart is only
+needed when you changed `.ts` files, including `src/foods.ts`:
 
 ```
-kill <pid of tsx src/index.ts>
-cd ~/dev/caltracker && nohup caffeinate -s pnpm start > data/caltrack.log 2>&1 &
+pnpm serve:restart
 ```
 
-Killing the `pnpm` or `caffeinate` wrapper orphans the child instead of stopping it —
-kill the `tsx src/index.ts` process itself. Confirm the log shows `[bot] polling` with no
-`EADDRINUSE` above it, or the old process is still holding port 5082 and still serving
-the old table.
+Never `pnpm restart` — npm owns that name and runs stop → restart → start, which starts
+a second server on top of the first.
 
 ## 10. Commit
 

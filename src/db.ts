@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DB_PATH, lastDays, localDate, localStamp, weekdayOf } from './config.ts'
+import { SEED_FOODS, type FoodEntry } from './foods.ts'
 import {
   type Activity, type Settings, DEFAULT_SETTINGS, defaultActivityFor,
 } from './nutrition.ts'
@@ -49,6 +50,22 @@ db.exec(`
     ts      TEXT NOT NULL,
     kind    TEXT NOT NULL CHECK (kind IN ('log','undo','weight','activity','error')),
     payload TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS vocab (
+    key           TEXT PRIMARY KEY,
+    aliases       TEXT NOT NULL,
+    basis         TEXT NOT NULL CHECK (basis IN ('per100g','each')),
+    unit_grams    REAL,
+    unit_noun     TEXT,
+    default_grams REAL,
+    portions      TEXT,
+    default_state TEXT NOT NULL CHECK (default_state IN ('raw','cooked')),
+    provenance    TEXT NOT NULL DEFAULT 'reference'
+                    CHECK (provenance IN ('measured','reference')),
+    raw           TEXT,
+    cooked        TEXT,
+    updated_at    TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS settings (
@@ -268,6 +285,73 @@ export function totalsFor(dates: string[]): Record<string, DayTotals> {
   }
   return out
 }
+
+// ------------------------------------------------------------------- vocab
+
+type VocabRow = {
+  key: string; aliases: string; basis: string; unit_grams: number | null
+  unit_noun: string | null; default_grams: number | null; portions: string | null
+  default_state: string; provenance: string; raw: string | null; cooked: string | null
+}
+
+const toEntry = (r: VocabRow): FoodEntry => ({
+  key: r.key,
+  aliases: JSON.parse(r.aliases) as string[],
+  basis: r.basis as FoodEntry['basis'],
+  ...(r.unit_grams == null ? {} : { unitGrams: r.unit_grams }),
+  ...(r.unit_noun == null ? {} : { unitNoun: r.unit_noun }),
+  ...(r.default_grams == null ? {} : { defaultGrams: r.default_grams }),
+  ...(r.portions == null ? {} : { portions: JSON.parse(r.portions) as Record<string, number> }),
+  defaultState: r.default_state as FoodEntry['defaultState'],
+  provenance: r.provenance as FoodEntry['provenance'],
+  ...(r.raw == null ? {} : { raw: JSON.parse(r.raw) as FoodEntry['raw'] }),
+  ...(r.cooked == null ? {} : { cooked: JSON.parse(r.cooked) as FoodEntry['cooked'] }),
+})
+
+export function allVocab(): FoodEntry[] {
+  return (db.prepare('SELECT * FROM vocab ORDER BY key').all() as VocabRow[]).map(toEntry)
+}
+
+const upsertVocabRow = db.prepare(`
+  INSERT INTO vocab (key, aliases, basis, unit_grams, unit_noun, default_grams,
+                     portions, default_state, provenance, raw, cooked, updated_at)
+  VALUES (@key, @aliases, @basis, @unit_grams, @unit_noun, @default_grams,
+          @portions, @default_state, @provenance, @raw, @cooked, @updated_at)
+  ON CONFLICT(key) DO UPDATE SET
+    aliases = excluded.aliases, basis = excluded.basis, unit_grams = excluded.unit_grams,
+    unit_noun = excluded.unit_noun, default_grams = excluded.default_grams,
+    portions = excluded.portions, default_state = excluded.default_state,
+    provenance = excluded.provenance, raw = excluded.raw, cooked = excluded.cooked,
+    updated_at = excluded.updated_at
+`)
+
+export function upsertVocab(entry: FoodEntry): void {
+  upsertVocabRow.run({
+    key: entry.key,
+    aliases: JSON.stringify(entry.aliases),
+    basis: entry.basis,
+    unit_grams: entry.unitGrams ?? null,
+    unit_noun: entry.unitNoun ?? null,
+    default_grams: entry.defaultGrams ?? null,
+    portions: entry.portions ? JSON.stringify(entry.portions) : null,
+    default_state: entry.defaultState,
+    provenance: entry.provenance ?? 'reference',
+    raw: entry.raw ? JSON.stringify(entry.raw) : null,
+    cooked: entry.cooked ? JSON.stringify(entry.cooked) : null,
+    updated_at: localStamp(),
+  })
+}
+
+/**
+ * Flag-gated, exactly like the sample data: a row-count check would repopulate
+ * the seed vocabulary after someone deliberately removed a row.
+ */
+export const seedVocab = db.transaction((): number => {
+  if (getFlag('vocab_seeded') === true) return 0
+  for (const entry of SEED_FOODS) upsertVocab(entry)
+  setFlag('vocab_seeded', true)
+  return SEED_FOODS.length
+})
 
 // ------------------------------------------------------------------ events
 

@@ -53,6 +53,6 @@ export function missesReport(days = 30): string {
     `refused in the last ${days} days · ${misses.length} phrase${misses.length === 1 ? '' : 's'}`,
     ...lines,
     '',
-    'Each is a missing FOOD_TABLE row in src/parse.ts.',
+    'Each is a missing row in the vocab table (seed rows live in src/foods.ts).',
   ].join('\n')
 }
