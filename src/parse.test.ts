@@ -144,6 +144,30 @@ describe('pancake', () => {
   })
 })
 
+describe('creatine', () => {
+  it('logs the daily dose at zero kcal', () => {
+    const [c] = items('5 gram creatine')
+    expect(c!.name).toBe('creatine')
+    expect(c!.grams).toBe(5)
+    expect(c!.kcal).toBe(0)
+    expect(c!.proteinG).toBe(0)
+  })
+
+  it('defaults to a 5 g serving, and a scoop is 5 g not the generic 30 g', () => {
+    expect(items('creatine')[0]!.grams).toBe(5)
+    expect(items('a scoop of creatine')[0]!.grams).toBe(5)
+  })
+
+  it('does not steal the weight from a food beside it', () => {
+    const parsed = items('creatine and rice 200g')
+    expect(parsed.map((i) => [i.name, i.grams])).toEqual([['creatine', 5], ['rice', 200]])
+  })
+
+  it('still refuses kreatin, which is not in the table', () => {
+    expect(parseMessage('5 gram kreatin', at('12:00')).ok).toBe(false)
+  })
+})
+
 describe('meal tags', () => {
   it('does not crash at midnight', () => {
     expect(mealTagFromClock(0)).toBe('breakfast')

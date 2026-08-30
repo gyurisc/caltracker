@@ -113,6 +113,13 @@ export const FOOD_TABLE: FoodEntry[] = [
     cooked: { proteinG: 2.4, carbsG: 11, fatG: 3.7 },
     raw: { proteinG: 2.4, carbsG: 11, fatG: 3.7 } },
 
+  // A supplement, not a food: 0/0/0, so deriveKcal gives 0. Here so the bot
+  // stops refusing a daily dose, not to move any total. 5 g is the usual scoop.
+  { key: 'creatine', aliases: ['creatine monohydrate', 'creatine'],
+    basis: 'per100g', defaultGrams: 5, defaultState: 'raw',
+    portions: { scoop: 5, tsp: 5, teaspoon: 5 },
+    raw: { proteinG: 0, carbsG: 0, fatG: 0 } },
+
   { key: 'avocado', aliases: ['avocado'],
     basis: 'per100g', defaultGrams: 200, defaultState: 'raw',
     raw: { proteinG: 2, carbsG: 8.5, fatG: 15 } },
