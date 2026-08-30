@@ -91,6 +91,40 @@ describe('never drops food silently', () => {
   })
 })
 
+describe('everyday phrasing', () => {
+  it('ignores adjectives that do not change the macros', () => {
+    expect(items('large banana')[0]!.grams).toBe(118)
+    expect(items('free range eggs')[0]!.name).toBe('eggs')
+    expect(items('scrambled eggs')[0]!.name).toBe('eggs')
+  })
+
+  it('still refuses an adjective that DOES change the macros', () => {
+    expect(parseMessage('fat free yogurt 150g').ok).toBe(false)
+  })
+
+  it('reads named portions, per food where they differ', () => {
+    expect(items('1 tbsp olive oil')[0]!.grams).toBe(14)
+    expect(items('a bowl of rice')[0]!.grams).toBe(200)
+    expect(items('a glass of milk')[0]!.grams).toBe(250)
+    expect(items('2 slices dark chocolate')[0]!.grams).toBe(20)
+    expect(items('2 scoops whey')[0]!.proteinG).toBeCloseTo(48, 0)
+  })
+
+  it('reads fractions of a serving', () => {
+    expect(items('half an avocado')[0]!.grams).toBe(100)
+    expect(items('half a banana')[0]!.grams).toBe(59)
+  })
+
+  it('keeps a portion phrase attached to the food it precedes', () => {
+    const parsed = items('rice 200g half an avocado')
+    expect(parsed.map((i) => [i.name, i.grams])).toEqual([['rice', 200], ['avocado', 100]])
+  })
+
+  it('lets an explicit weight beat a portion word', () => {
+    expect(items('a bowl of rice 150g')[0]!.grams).toBe(150)
+  })
+})
+
 describe('meal tags', () => {
   it('does not crash at midnight', () => {
     expect(mealTagFromClock(0)).toBe('breakfast')

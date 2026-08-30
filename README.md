@@ -39,8 +39,33 @@ Open http://localhost:5173.
 pnpm build && pnpm start   # single process on :3000, serves dist/ and still polls
 ```
 
-An empty database seeds a sample fortnight on first boot. `pnpm seed` reseeds;
-"Reload sample week" in the dashboard does the same.
+A new database seeds a sample fortnight once, tracked by a flag rather than a
+row count — so wiping the log to start clean does not repopulate demo rows on
+the next restart. `pnpm seed` reseeds; `pnpm seed:wipe` removes seed rows and
+leaves real ones alone.
+
+## Deploy on your machine
+
+```bash
+git pull
+pnpm install                 # pnpm-workspace.yaml approves the native build
+pnpm build
+pnpm seed:wipe               # before logging real food
+nohup caffeinate -s pnpm start > caltrack.log 2>&1 &
+```
+
+Set an **absolute** `DB_PATH` in `.env`. It defaults to `./data/caltrack.db`,
+relative to the working directory, so launching from anywhere else silently
+creates an empty database:
+
+```
+DB_PATH=/Users/you/caltracker/data/caltrack.db
+```
+
+`caffeinate -s` holds sleep off only while the process runs; also set
+System Settings → Energy → prevent sleeping when the display is off.
+`unhandledRejection` and `uncaughtException` are logged rather than fatal, so a
+stray error does not end the day silently — check `caltrack.log` for them.
 
 ## Test
 

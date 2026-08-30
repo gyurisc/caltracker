@@ -3,9 +3,10 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { existsSync } from 'node:fs'
 import { Hono } from 'hono'
 import { api } from './api.ts'
+import { getFlag, setFlag } from './db.ts'
 import { createBot } from './bot/index.ts'
 import { DB_PATH, PORT, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, TZ, localDate } from './config.ts'
-import { hasAnyFood, seedSampleData } from './seed.ts'
+import { seedSampleData } from './seed.ts'
 
 const app = new Hono()
 
@@ -19,9 +20,21 @@ if (existsSync('./dist/index.html')) {
   app.get('*', serveStatic({ path: './dist/index.html' }))
 }
 
-if (!hasAnyFood()) {
-  console.log(`[seed] empty database, seeding a sample fortnight (${seedSampleData()} rows)`)
+// Gated on a flag, not a row count — otherwise wiping the log to start clean
+// would silently repopulate 125 demo rows on the next restart.
+if (!getFlag('seeded')) {
+  console.log(`[seed] new database, seeding a sample fortnight (${seedSampleData()} rows)`)
+  console.log('[seed] run `pnpm seed:wipe` before logging real food')
+  setFlag('seeded', true)
 }
+
+// Unattended runs must survive a stray rejection rather than vanish mid-day.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason)
+})
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err)
+})
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(`[api]  http://localhost:${info.port}  ·  db ${DB_PATH}  ·  tz ${TZ}`)

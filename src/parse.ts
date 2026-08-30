@@ -26,6 +26,8 @@ type FoodEntry = {
   unitGrams?: number
   unitNoun?: string
   defaultGrams?: number
+  /** Grams for a named portion of THIS food, overriding GENERIC_PORTIONS. */
+  portions?: Record<string, number>
   defaultState: 'raw' | 'cooked'
   raw?: Macros
   cooked?: Macros
@@ -68,6 +70,7 @@ export const FOOD_TABLE: FoodEntry[] = [
 
   { key: 'rice', aliases: ['white rice', 'brown rice', 'rice'],
     basis: 'per100g', defaultGrams: 200, defaultState: 'cooked',
+    portions: { bowl: 200, cup: 190, plate: 250 },
     raw: { proteinG: 7.1, carbsG: 80, fatG: 0.7 },
     cooked: { proteinG: 2.7, carbsG: 28, fatG: 0.3 } },
 
@@ -77,18 +80,22 @@ export const FOOD_TABLE: FoodEntry[] = [
 
   { key: 'olive oil', aliases: ['olive oil', 'oil'],
     basis: 'per100g', defaultGrams: 14, defaultState: 'raw',
+    portions: { tbsp: 14, tablespoon: 14, tsp: 5, teaspoon: 5, glug: 14, drizzle: 7 },
     raw: { proteinG: 0, carbsG: 0, fatG: 100 } },
 
   { key: 'yogurt', aliases: ['greek yogurt', 'yoghurt', 'yogurt', 'yopro', 'skyr', 'quark'],
     basis: 'per100g', defaultGrams: 150, defaultState: 'raw',
+    portions: { bowl: 200, cup: 200, pot: 150, tub: 500 },
     raw: { proteinG: 11, carbsG: 4, fatG: 0.2 } },
 
   { key: 'dark chocolate', aliases: ['dark chocolate', 'chocolate'],
     basis: 'per100g', defaultGrams: 25, defaultState: 'raw',
+    portions: { square: 10, slice: 10, piece: 10, bar: 100, row: 25 },
     raw: { proteinG: 7.8, carbsG: 46, fatG: 43 } },
 
   { key: 'milk', aliases: ['semi skimmed milk', 'milk'],
     basis: 'per100g', defaultGrams: 250, defaultState: 'raw',
+    portions: { glass: 250, cup: 240, splash: 30, dash: 15 },
     raw: { proteinG: 3.4, carbsG: 4.8, fatG: 1.5 } },
 
   { key: 'whey', aliases: ['whey protein', 'whey', 'protein shake', 'protein powder'],
@@ -101,7 +108,7 @@ export const FOOD_TABLE: FoodEntry[] = [
     cooked: { proteinG: 6.3, carbsG: 0.4, fatG: 4.8 } },
 
   { key: 'avocado', aliases: ['avocado'],
-    basis: 'per100g', defaultGrams: 100, defaultState: 'raw',
+    basis: 'per100g', defaultGrams: 200, defaultState: 'raw',
     raw: { proteinG: 2, carbsG: 8.5, fatG: 15 } },
 ]
 
@@ -167,11 +174,49 @@ function readCount(chunk: string): number | null {
   return null
 }
 
+function readFraction(chunk: string): number | null {
+  const m = chunk.match(/\b(?:half|halve|quarter|third)\b|1\/2|1\/4|3\/4/)
+  if (!m) return null
+  return FRACTIONS[m[0] === 'halve' ? 'half' : m[0]] ?? null
+}
+
+/** Grams for a named portion — the food's own table wins over the generic one. */
+function readPortion(chunk: string, entry: FoodEntry): number | null {
+  const table = { ...GENERIC_PORTIONS, ...(entry.portions ?? {}) }
+  for (const noun of Object.keys(table).sort((a, b) => b.length - a.length)) {
+    if (new RegExp(`\\b${noun}s?\\b`).test(chunk)) return table[noun]!
+  }
+  return null
+}
+
 function readState(chunk: string): 'raw' | 'cooked' | null {
   if (/\bcooked\b|\bgrilled\b|\bfried\b|\bpan.?fried\b|\bbrowned\b|\bboiled\b|\broasted\b/.test(chunk)) return 'cooked'
   if (/\braw\b|\buncooked\b/.test(chunk)) return 'raw'
   return null
 }
+
+/** Grams for a named portion, when the food itself does not override it. */
+const GENERIC_PORTIONS: Record<string, number> = {
+  tbsp: 15, tablespoon: 15, tsp: 5, teaspoon: 5,
+  cup: 240, glass: 250, bowl: 250, plate: 300,
+  scoop: 30, handful: 30, piece: 50, slice: 30, square: 10, bar: 100,
+}
+const PORTION_WORDS = new RegExp(
+  `\\b(?:${Object.keys(GENERIC_PORTIONS).join('|')}|pot|tub|glug|drizzle|splash|dash|row|whole)s?\\b`, 'g')
+
+/** Fractions of a normal serving. */
+const FRACTIONS: Record<string, number> = {
+  half: 0.5, quarter: 0.25, third: 0.34, '1/2': 0.5, '1/4': 0.25, '3/4': 0.75,
+}
+const FRACTION_WORDS = /\b(?:half|halve|quarter|third)\b|(?:1\/2|1\/4|3\/4)/g
+
+/**
+ * Adjectives that do not change the macros of any row in this table.
+ * Anything that DOES change them (fat free, skimmed, low fat) is deliberately
+ * absent, so it refuses instead of logging the wrong row.
+ */
+const NOISE_WORDS =
+  /\b(?:large|small|medium|big|extra|fresh|organic|plain|free.range|scrambled|poached|hard|soft|home.?made|left.?over)\b/g
 
 const QUANTITY = /\b\d+(?:\.\d+)?\s*(?:g|gr|gram|grams|kg|ml)?\b/g
 const NUMBER_WORDS = /\b(?:a|an|one|two|three|four|five|six)\b/g
@@ -213,7 +258,10 @@ function residual(chunk: string, matches: Match[]): string {
     rest = rest.slice(0, m.start) + ' '.repeat(m.end - m.start) + rest.slice(m.end)
   }
   return rest
+    .replace(FRACTION_WORDS, ' ')
     .replace(QUANTITY, ' ')
+    .replace(PORTION_WORDS, ' ')
+    .replace(NOISE_WORDS, ' ')
     .replace(NUMBER_WORDS, ' ')
     .replace(STATE_WORDS, ' ')
     .replace(MEAL_WORDS, ' ')
@@ -228,7 +276,11 @@ function residual(chunk: string, matches: Match[]): string {
  */
 function segmentStart(chunk: string, at: number): number {
   const before = chunk.slice(0, at)
-  const lead = before.match(/(?:\d+(?:\.\d+)?|a|an|one|two|three|four|five|six)\s*$/)
+  // A trailing run of quantity words belongs to the food that follows:
+  // in `rice 200g half an avocado`, `half an` is the avocado's.
+  const lead = before.match(
+    /(?:\b(?:\d+(?:\.\d+)?|a|an|one|two|three|four|five|six|half|halve|quarter|third|of|tbsp|tablespoons?|tsp|teaspoons?|cups?|glass|glasses|bowls?|plates?|scoops?|handfuls?|pieces?|slices?|squares?|bars?|pots?|tubs?)\b\s*|1\/2\s*|1\/4\s*|3\/4\s*)+$/,
+  )
   return lead ? at - lead[0].length : at
 }
 
@@ -238,23 +290,24 @@ function buildItem(entry: FoodEntry, segment: string, mealTag: MealTag | null): 
   const macros = (state === 'cooked' ? entry.cooked : entry.raw) ?? entry.raw ?? entry.cooked!
   const grams = readGrams(chunk)
   const count = readCount(chunk)
+  const fraction = readFraction(chunk)
+  const portion = readPortion(chunk, entry)
+  const unit = entry.unitGrams ?? 100
 
-  let factor: number
-  let finalGrams: number | null
-
-  if (entry.basis === 'each') {
-    const unit = entry.unitGrams ?? 100
-    if (grams != null) {
-      factor = grams / unit
-      finalGrams = grams
-    } else {
-      factor = count ?? 1
-      finalGrams = unit * factor
-    }
+  // An explicit weight beats everything; then a named portion; then units.
+  let finalGrams: number
+  if (grams != null) {
+    finalGrams = grams
+  } else if (portion != null) {
+    finalGrams = portion * (count ?? 1) * (fraction ?? 1)
+  } else if (entry.basis === 'each') {
+    finalGrams = unit * (count ?? 1) * (fraction ?? 1)
   } else {
-    finalGrams = grams ?? (count != null ? count * 100 : entry.defaultGrams ?? 100)
-    factor = finalGrams / 100
+    finalGrams = (entry.defaultGrams ?? 100) * (count ?? 1) * (fraction ?? 1)
   }
+
+  finalGrams = Math.round(finalGrams * 10) / 10
+  const factor = entry.basis === 'each' ? finalGrams / unit : finalGrams / 100
 
   const proteinG = round1(macros.proteinG * factor)
   const carbsG = round1(macros.carbsG * factor)

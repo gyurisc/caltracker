@@ -108,6 +108,16 @@ export function saveSettings(patch: Partial<Settings>): Settings {
   return next
 }
 
+/** Small persistent flags (e.g. "this database has been seeded once"). */
+export function getFlag(key: string): unknown {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(`flag:${key}`) as { value: string } | undefined
+  return row ? JSON.parse(row.value) : undefined
+}
+
+export function setFlag(key: string, value: unknown): void {
+  putSetting.run(`flag:${key}`, JSON.stringify(value))
+}
+
 // -------------------------------------------------------------------- days
 
 /** Every food write goes through this first, so the FK on foods.date always holds. */

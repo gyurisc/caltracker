@@ -80,5 +80,9 @@ export function hasAnyFood(): boolean {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  console.log(`seeded ${seedSampleData()} rows`)
+  if (process.argv[2] === '--wipe') {
+    console.log(`wiped ${wipeSeed()} seed rows — real rows are untouched`)
+  } else {
+    console.log(`seeded ${seedSampleData()} rows`)
+  }
 }

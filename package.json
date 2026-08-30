@@ -14,7 +14,8 @@
     "start": "tsx src/index.ts",
     "seed": "tsx src/seed.ts",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed:wipe": "tsx src/seed.ts --wipe"
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
