@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import {
-  deleteFood, getState, postActivity, postLog, postSeed, postWeight,
-  type Activity, type State, type TrendDay, type WeekDay,
-} from './api.ts'
+import { getState, type Activity, type State, type TrendDay, type WeekDay } from './api.ts'
 
 const n = (v: number) => Math.round(v).toLocaleString('en-US')
 const dayName = (d: string) => ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][new Date(`${d}T12:00:00Z`).getUTCDay()]
-const ACTIVITIES: Activity[] = ['rest', 'lifting', 'cycling']
 const LABEL: Record<Activity, string> = { rest: 'Rest', lifting: 'Lift', cycling: 'Cycle' }
-const QUICK = ['black coffee', 'banana', 'minced meat 170g cooked', '2 eggs', 'rice 200g']
 
 export default function App() {
   const [state, setState] = useState<State | null>(null)
@@ -39,67 +34,17 @@ export default function App() {
         </span>
       </header>
 
-      <Composer onLogged={refresh} />
       <WeekCalories week={state.week} />
       <WeekProtein week={state.week} goal={settings.proteinGoal} />
-      <Today state={state} onChange={refresh} />
+      <Today state={state} />
       <WeightTrend trend={state.trend} goal={settings.proteinGoal} />
-      <Targets state={state} onSeed={async () => { await postSeed(); await refresh() }} />
+      <Targets state={state} />
 
       {error && <p className="err">{error}</p>}
       <p className="caption">
         eaten {n(totals.kcal)} · {totals.items} items · estimates, not medical advice
       </p>
     </div>
-  )
-}
-
-function Composer({ onLogged }: { onLogged: () => Promise<void> }) {
-  const [text, setText] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [miss, setMiss] = useState<string | null>(null)
-
-  async function submit(value: string) {
-    const body = value.trim()
-    if (!body || busy) return
-    setBusy(true)
-    setMiss(null)
-    try {
-      await postLog(body)
-      setText('')
-      await onLogged()
-    } catch (e) {
-      const unmatched = (e as { unmatched?: string[] }).unmatched
-      setMiss(unmatched?.length ? `not in the local table: ${unmatched.join(', ')}` : (e as Error).message)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <section className="panel">
-      <h2>Log</h2>
-      <textarea
-        value={text}
-        placeholder="black coffee · minced meat 170g cooked · 2 eggs, rice 200g"
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submit(text)
-        }}
-      />
-      <div className="row" style={{ marginTop: 9 }}>
-        <button onClick={() => void submit(text)} disabled={busy || !text.trim()}>
-          {busy ? 'saving…' : 'Send'}
-        </button>
-        <span className="faint" style={{ fontSize: 11 }}>⌘↵</span>
-      </div>
-      <div className="chips">
-        {QUICK.map((q) => (
-          <button key={q} className="chip" onClick={() => void submit(q)} disabled={busy}>{q}</button>
-        ))}
-      </div>
-      {miss && <p className="err">{miss}</p>}
-    </section>
   )
 }
 
@@ -164,11 +109,8 @@ function WeekProtein({ week, goal }: { week: WeekDay[]; goal: number }) {
   )
 }
 
-function Today({ state, onChange }: { state: State; onChange: () => Promise<void> }) {
+function Today({ state }: { state: State }) {
   const { today, settings, totals, items } = state
-  const [weight, setWeight] = useState('')
-
-  useEffect(() => { setWeight(today.weightKg ? String(today.weightKg) : '') }, [today.weightKg])
 
   const over = totals.kcal > today.targetKcal
   const kcalPct = Math.min(100, (totals.kcal / today.targetKcal) * 100)
@@ -180,29 +122,11 @@ function Today({ state, onChange }: { state: State; onChange: () => Promise<void
       <div className="head" style={{ marginBottom: 10 }}>
         <h2 style={{ margin: 0 }}>Today · {today.date}</h2>
         <div className="row">
-          {ACTIVITIES.map((a) => (
-            <button
-              key={a}
-              className={`chip ${today.activity === a ? 'on' : ''}`}
-              onClick={async () => { await postActivity(a); await onChange() }}
-            >
-              {LABEL[a]}
-            </button>
-          ))}
+          <span className="chip on">{LABEL[today.activity]}</span>
+          <span className="faint">
+            {today.weightKg != null ? `${today.weightKg} kg` : 'no weigh-in'}
+          </span>
         </div>
-      </div>
-
-      <div className="row" style={{ marginBottom: 12 }}>
-        <input
-          inputMode="decimal"
-          placeholder="morning weight, kg"
-          value={weight}
-          onChange={(e) => setWeight(e.target.value)}
-          onBlur={async () => {
-            const kg = Number(weight.replace(',', '.'))
-            if (Number.isFinite(kg) && kg > 0 && kg !== today.weightKg) { await postWeight(kg); await onChange() }
-          }}
-        />
       </div>
 
       <div className="stat">
@@ -227,7 +151,7 @@ function Today({ state, onChange }: { state: State; onChange: () => Promise<void
       </div>
 
       {items.length === 0 ? (
-        <p className="dim" style={{ marginTop: 16 }}>Nothing logged yet. Type a meal or snap a plate.</p>
+        <p className="dim" style={{ marginTop: 16 }}>Nothing logged yet. Log food in Telegram.</p>
       ) : (
         <table style={{ marginTop: 14 }}>
           <tbody>
@@ -245,15 +169,6 @@ function Today({ state, onChange }: { state: State; onChange: () => Promise<void
                 <td className="num faint">{i.time}</td>
                 <td className="num">{Math.round(i.protein_g)} g</td>
                 <td className="num">{n(i.kcal)}</td>
-                <td className="act">
-                  <button
-                    className="x"
-                    title="delete"
-                    onClick={async () => { await deleteFood(i.id); await onChange() }}
-                  >
-                    ×
-                  </button>
-                </td>
               </tr>
             ))}
           </tbody>
@@ -313,7 +228,7 @@ function WeightTrend({ trend, goal }: { trend: TrendDay[]; goal: number }) {
   )
 }
 
-function Targets({ state, onSeed }: { state: State; onSeed: () => Promise<void> }) {
+function Targets({ state }: { state: State }) {
   const { settings } = state
   return (
     <section className="panel">
@@ -324,9 +239,6 @@ function Targets({ state, onSeed }: { state: State; onSeed: () => Promise<void> 
         <div><label>maintenance · rest</label>{n(settings.maintenance.rest)}</div>
         <div><label>maintenance · lift</label>{n(settings.maintenance.lifting)}</div>
         <div><label>maintenance · cycle</label>{n(settings.maintenance.cycling)}</div>
-      </div>
-      <div style={{ marginTop: 14 }}>
-        <button className="chip" onClick={() => void onSeed()}>Reload sample week</button>
       </div>
     </section>
   )

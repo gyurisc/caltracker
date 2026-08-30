@@ -52,9 +52,3 @@ async function send<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const getState = () => send<State>('/state')
-export const postLog = (text: string) => send<{ rows: FoodRow[] }>('/log', { method: 'POST', body: JSON.stringify({ text }) })
-export const deleteFood = (id: string) => send(`/food/${id}`, { method: 'DELETE' })
-export const postActivity = (activity: Activity) =>
-  send('/day/activity', { method: 'POST', body: JSON.stringify({ activity }) })
-export const postWeight = (kg: number) => send('/day/weight', { method: 'POST', body: JSON.stringify({ kg }) })
-export const postSeed = () => send('/seed', { method: 'POST' })
