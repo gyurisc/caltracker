@@ -4,7 +4,7 @@ import {
   deleteFood, getDay, getSettings, mostRecentFood, setActivity, setWeight, totalsFor,
 } from '../db.ts'
 import { activityLabel, normalizeActivity, targetKcal } from '../nutrition.ts'
-import { n, todayLine, todayReport } from '../report.ts'
+import { n, todayLine, todayReport, vocabReport } from '../report.ts'
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
 
 export function createBot(): Bot {
@@ -24,6 +24,7 @@ export function createBot(): Bot {
         'Send food as text: `black coffee` · `minced meat 170g cooked` · `2 eggs, rice 200g`',
         '',
         '/today — eaten, target, items',
+        '/foods — every food I know',
         '/week — last 7 days',
         '/weight 74.2 — morning weigh-in',
         '/activity rest|lift|cycle',
@@ -37,6 +38,8 @@ export function createBot(): Bot {
   )
 
   bot.command('today', (ctx) => ctx.reply(todayReport()))
+
+  bot.command('foods', (ctx) => ctx.reply(vocabReport()))
 
   bot.command('week', (ctx) => {
     const s = getSettings()

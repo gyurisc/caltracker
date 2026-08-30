@@ -108,6 +108,13 @@ describe('telegram logging', () => {
     expect(foods()).toHaveLength(0)
   })
 
+  it('/foods lists the vocabulary', async () => {
+    await bot.handleUpdate(update(OWNER, '/foods') as never)
+    expect(sent.at(-1)).toContain('black coffee')
+    expect(sent.at(-1)).toContain('skyr')
+    expect(sent.at(-1)).toContain('foods')
+  })
+
   // /today and `tsx src/today.ts` must stay one renderer, or the CLI drifts from the bot.
   it('/today replies with exactly todayReport()', async () => {
     await bot.handleUpdate(update(OWNER, '2 eggs') as never)

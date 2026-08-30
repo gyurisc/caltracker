@@ -144,6 +144,24 @@ describe('pancake', () => {
   })
 })
 
+describe('skyr', () => {
+  it('is its own food, not the yogurt row', () => {
+    const [s] = items('skyr 400g')
+    expect(s!.name).toBe('skyr')
+    expect(s!.grams).toBe(400)
+    expect(s!.proteinG).toBe(44)
+    expect(s!.kcal).toBe(247)
+  })
+
+  it('still parses yogurt separately', () => {
+    expect(items('greek yogurt 150g')[0]!.name).toBe('yogurt')
+  })
+
+  it('knows a pot is 170 g, not the generic 150', () => {
+    expect(items('a pot of skyr')[0]!.grams).toBe(170)
+  })
+})
+
 describe('provenance', () => {
   it('marks table rows as reference, since none has been weighed yet', () => {
     expect(items('black coffee')[0]!.provenance).toBe('reference')

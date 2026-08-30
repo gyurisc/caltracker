@@ -325,7 +325,17 @@ const upsertVocabRow = db.prepare(`
     updated_at = excluded.updated_at
 `)
 
+/**
+ * Bumped on every vocab write. Readers compare it to what they cached, so a row
+ * written by another process — `pnpm vocab:sync`, a second tool — is picked up
+ * without a restart. An in-process flag alone would miss those entirely.
+ */
+export function vocabVersion(): string {
+  return (getFlag('vocab_version') as string | undefined) ?? '0'
+}
+
 export function upsertVocab(entry: FoodEntry): void {
+  setFlag('vocab_version', localStamp() + ':' + entry.key)
   upsertVocabRow.run({
     key: entry.key,
     aliases: JSON.stringify(entry.aliases),

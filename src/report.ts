@@ -1,6 +1,8 @@
 import { localDate } from './config.ts'
 import { foodsOn, getDay, getSettings, recentMisses, totalsFor } from './db.ts'
-import { activityLabel, targetKcal } from './nutrition.ts'
+import { provenanceOf } from './foods.ts'
+import { vocabTable } from './vocab.ts'
+import { activityLabel, deriveKcal, targetKcal } from './nutrition.ts'
 
 export const n = (v: number) => Math.round(v).toLocaleString('en-US')
 
@@ -54,5 +56,31 @@ export function missesReport(days = 30): string {
     ...lines,
     '',
     'Each is a missing row in the vocab table (seed rows live in src/foods.ts).',
+  ].join('\n')
+}
+
+/** Everything the parser knows, with the rate each food is logged at. */
+export function vocabReport(): string {
+  const entries = [...vocabTable().entries].sort((a, b) => a.key.localeCompare(b.key))
+  const width = Math.max(...entries.map((e) => e.key.length))
+
+  const lines = entries.map((e) => {
+    const macros = (e.defaultState === 'cooked' ? e.cooked : e.raw) ?? e.raw ?? e.cooked!
+    const kcal = macros.kcal ?? deriveKcal(macros.proteinG, macros.carbsG, macros.fatG)
+    const per = e.basis === 'each' ? `each ${e.unitGrams ?? 0} g` : 'per 100 g'
+    const est = provenanceOf(e) === 'measured' ? ' ' : '~'
+    const also = e.aliases.filter((a) => a !== e.key)
+    return [
+      `${e.key.padEnd(width)} ${est}${String(Math.round(kcal)).padStart(4)} kcal`,
+      `${macros.proteinG.toFixed(1).padStart(5)} g P`,
+      `${per}${also.length ? `  · ${also.join(', ')}` : ''}`,
+    ].join(' · ')
+  })
+
+  return [
+    `${entries.length} foods`,
+    ...lines,
+    '',
+    '~ never weighed · anything else is refused, not guessed',
   ].join('\n')
 }

@@ -91,7 +91,15 @@ export const SEED_FOODS: FoodEntry[] = [
     portions: { tbsp: 14, tablespoon: 14, tsp: 5, teaspoon: 5, glug: 14, drizzle: 7 },
     raw: { proteinG: 0, carbsG: 0, fatG: 100 } },
 
-  { key: 'yogurt', aliases: ['greek yogurt', 'yoghurt', 'yogurt', 'yopro', 'skyr', 'quark'],
+  // Strained Icelandic skyr, plain. Its own row, not a yogurt alias: skyr is a
+  // different food with a different protein figure, and it deserves to be
+  // weighed and locked on its own. Check your tub — brands run 11-12 g.
+  { key: 'skyr', aliases: ['skyr'],
+    basis: 'per100g', defaultGrams: 170, defaultState: 'raw',
+    portions: { pot: 170, tub: 450, bowl: 200, cup: 200 },
+    raw: { proteinG: 11, carbsG: 4, fatG: 0.2 } },
+
+  { key: 'yogurt', aliases: ['greek yogurt', 'yoghurt', 'yogurt', 'yopro', 'quark'],
     basis: 'per100g', defaultGrams: 150, defaultState: 'raw',
     portions: { bowl: 200, cup: 200, pot: 150, tub: 500 },
     raw: { proteinG: 11, carbsG: 4, fatG: 0.2 } },
