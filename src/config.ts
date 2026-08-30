@@ -1,8 +1,27 @@
-import 'dotenv/config'
+import { config as loadEnv } from 'dotenv'
+import { dirname, isAbsolute, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+/**
+ * Repo root, derived from this file's own location — never from process.cwd().
+ * SQLite creates a missing database rather than failing, so a path resolved
+ * against the wrong working directory yields a silent, empty, freshly-seeded
+ * log instead of an error.
+ */
+export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+
+// dotenv defaults to cwd too. Loaded from the repo instead, or starting from
+// another directory silently disables the bot while everything else looks fine.
+loadEnv({ path: resolve(ROOT, '.env') })
+
+/** Resolve anything relative against the repo, so cwd cannot move the database. */
+export function fromRoot(p: string): string {
+  return isAbsolute(p) ? p : resolve(ROOT, p)
+}
 
 export const TZ = process.env.TZ || 'Europe/Amsterdam'
 export const PORT = Number(process.env.PORT || 3000)
-export const DB_PATH = process.env.DB_PATH || './data/caltrack.db'
+export const DB_PATH = fromRoot(process.env.DB_PATH || './data/caltrack.db')
 export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN?.trim() || ''
 export const TELEGRAM_USER_ID = Number(process.env.TELEGRAM_USER_ID || 0)
 export const XAI_API_KEY = process.env.XAI_API_KEY?.trim() || ''

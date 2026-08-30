@@ -5,7 +5,7 @@ import { Hono } from 'hono'
 import { api } from './api.ts'
 import { getFlag, setFlag } from './db.ts'
 import { createBot } from './bot/index.ts'
-import { DB_PATH, PORT, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, TZ, localDate } from './config.ts'
+import { DB_PATH, PORT, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, TZ, fromRoot, localDate } from './config.ts'
 import { seedSampleData } from './seed.ts'
 
 const app = new Hono()
@@ -15,9 +15,11 @@ app.route('/api', api)
 app.get('/health', (c) => c.json({ ok: true, date: localDate(), tz: TZ }))
 
 // Prod-on-Mini: serve the built dashboard. In dev, Vite does this on :5173.
-if (existsSync('./dist/index.html')) {
-  app.use('/assets/*', serveStatic({ root: './dist' }))
-  app.get('*', serveStatic({ path: './dist/index.html' }))
+// Paths are pinned to the repo, not cwd, for the same reason DB_PATH is.
+const DIST = fromRoot('dist')
+if (existsSync(`${DIST}/index.html`)) {
+  app.use('/assets/*', serveStatic({ root: DIST }))
+  app.get('*', serveStatic({ path: `${DIST}/index.html` }))
 }
 
 // Gated on a flag, not a row count — otherwise wiping the log to start clean

@@ -105,9 +105,11 @@ entity on any `/command` text, or grammY routes it to the text handler instead.
 
 ## Gotchas
 
-- `DB_PATH` defaults to `./data/caltrack.db`, **relative to cwd**. Launching from another
-  directory silently creates an empty database with no error. Deployments need an absolute
-  path in `.env`.
+- Anything path-shaped must go through `fromRoot()` in `src/config.ts`, which resolves
+  against the repo rather than `process.cwd()`. This is not cosmetic: SQLite creates a
+  missing database instead of failing, and dotenv reads `.env` from cwd, so a process
+  started from the wrong directory silently gets an empty log **and** a disabled bot while
+  appearing healthy. `DB_PATH`, `.env`, and `dist/` are all pinned this way.
 - The PRD says `caltracker.db`; the code and README use `caltrack.db`. The code is correct.
 - Vision (PRD §7.3) is **not built**. Photos are refused. When adding it, the confirm card
   needs a pending store: Telegram caps `callback_data` at 64 bytes, so parsed items cannot

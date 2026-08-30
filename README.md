@@ -54,13 +54,10 @@ pnpm seed:wipe               # before logging real food
 nohup caffeinate -s pnpm start > caltrack.log 2>&1 &
 ```
 
-Set an **absolute** `DB_PATH` in `.env`. It defaults to `./data/caltrack.db`,
-relative to the working directory, so launching from anywhere else silently
-creates an empty database:
-
-```
-DB_PATH=/Users/you/caltracker/data/caltrack.db
-```
+The database, `.env`, and `dist/` all resolve against the repo, not the working
+directory, so `pnpm start` opens the same log from anywhere. Set `DB_PATH` only
+if you want the file somewhere else; a relative value is resolved from the repo
+root and an absolute one is used as-is.
 
 `caffeinate -s` holds sleep off only while the process runs; also set
 System Settings → Energy → prevent sleeping when the display is off.
