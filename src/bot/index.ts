@@ -1,19 +1,11 @@
 import { Bot } from 'grammy'
 import { TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
 import {
-  deleteFood, foodsOn, getDay, getSettings, mostRecentFood, setActivity, setWeight, totalsFor,
+  deleteFood, getDay, getSettings, mostRecentFood, setActivity, setWeight, totalsFor,
 } from '../db.ts'
 import { activityLabel, normalizeActivity, targetKcal } from '../nutrition.ts'
+import { n, todayLine, todayReport } from '../report.ts'
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
-
-const n = (v: number) => Math.round(v).toLocaleString('en-US')
-
-function todayLine(date = localDate()): string {
-  const s = getSettings()
-  const day = getDay(date)
-  const t = totalsFor([date])[date]!
-  return `${n(t.kcal)} / ${n(targetKcal(day.activity, s))} kcal · ${t.proteinG.toFixed(0)} / ${s.proteinGoal} g P`
-}
 
 export function createBot(): Bot {
   const bot = new Bot(TELEGRAM_BOT_TOKEN)
@@ -44,31 +36,7 @@ export function createBot(): Bot {
     ),
   )
 
-  bot.command('today', (ctx) => {
-    const date = localDate()
-    const day = getDay(date)
-    const items = foodsOn(date)
-    const s = getSettings()
-    const t = totalsFor([date])[date]!
-    const target = targetKcal(day.activity, s)
-
-    const lines = items.length
-      ? items.map((i) => {
-          const grams = i.grams ? ` ${i.grams}g${i.cooked == null ? '' : i.cooked ? ' cooked' : ' raw'}` : ''
-          return `${i.time}  ${i.name}${grams} · ${i.protein_g.toFixed(0)}g P · ${n(i.kcal)} kcal`
-        })
-      : ['Nothing logged yet.']
-
-    ctx.reply(
-      [
-        `${date} · ${activityLabel(day.activity)}${day.weight_kg ? ` · ${day.weight_kg} kg` : ''}`,
-        ...lines,
-        '',
-        todayLine(date),
-        `${target - t.kcal >= 0 ? `${n(target - t.kcal)} kcal left` : `${n(t.kcal - target)} kcal over`}`,
-      ].join('\n'),
-    )
-  })
+  bot.command('today', (ctx) => ctx.reply(todayReport()))
 
   bot.command('week', (ctx) => {
     const s = getSettings()

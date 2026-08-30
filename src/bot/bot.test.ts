@@ -107,4 +107,15 @@ describe('telegram logging', () => {
     expect(sent.at(-1)).toContain('not in the local table')
     expect(foods()).toHaveLength(0)
   })
+
+  // /today and `tsx src/today.ts` must stay one renderer, or the CLI drifts from the bot.
+  it('/today replies with exactly todayReport()', async () => {
+    await bot.handleUpdate(update(OWNER, '2 eggs') as never)
+    await bot.handleUpdate(update(OWNER, '/today') as never)
+
+    const { todayReport } = await import('../report.ts')
+    expect(sent.at(-1)).toBe(todayReport())
+    expect(sent.at(-1)).toContain('eggs')
+    expect(sent.at(-1)).toContain('kcal left')
+  })
 })
