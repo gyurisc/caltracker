@@ -1,0 +1,41 @@
+import { serve } from '@hono/node-server'
+import { serveStatic } from '@hono/node-server/serve-static'
+import { existsSync } from 'node:fs'
+import { Hono } from 'hono'
+import { api } from './api.ts'
+import { createBot } from './bot/index.ts'
+import { DB_PATH, PORT, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, TZ, localDate } from './config.ts'
+import { hasAnyFood, seedSampleData } from './seed.ts'
+
+const app = new Hono()
+
+// API first, so the SPA fallback below can never shadow it.
+app.route('/api', api)
+app.get('/health', (c) => c.json({ ok: true, date: localDate(), tz: TZ }))
+
+// Prod-on-Mini: serve the built dashboard. In dev, Vite does this on :5173.
+if (existsSync('./dist/index.html')) {
+  app.use('/assets/*', serveStatic({ root: './dist' }))
+  app.get('*', serveStatic({ path: './dist/index.html' }))
+}
+
+if (!hasAnyFood()) {
+  console.log(`[seed] empty database, seeding a sample fortnight (${seedSampleData()} rows)`)
+}
+
+serve({ fetch: app.fetch, port: PORT }, (info) => {
+  console.log(`[api]  http://localhost:${info.port}  ·  db ${DB_PATH}  ·  tz ${TZ}`)
+})
+
+if (TELEGRAM_BOT_TOKEN && TELEGRAM_USER_ID) {
+  const bot = createBot()
+  bot.start({
+    drop_pending_updates: true,
+    onStart: (me) => console.log(`[bot]  @${me.username} polling · allowlisted user ${TELEGRAM_USER_ID}`),
+  })
+  const stop = () => { void bot.stop() }
+  process.once('SIGINT', stop)
+  process.once('SIGTERM', stop)
+} else {
+  console.log('[bot]  disabled — set TELEGRAM_BOT_TOKEN and TELEGRAM_USER_ID in .env')
+}

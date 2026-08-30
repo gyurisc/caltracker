@@ -174,7 +174,7 @@ Macros: integers for kcal; one decimal allowed for grams of P/C/F.
 kcal = round(4 × protein_g + 4 × carbs_g + 9 × fat_g)
 ```
 
-A `kcal` supplied by Grok is a cross-check, not a value: if it deviates from the derived figure by more than 15%, keep the derived number and write an `error`-kind row to `events` with both. This is what makes §2’s “deterministic math” true — the same macros always produce the same calories, and a model that returns 250 kcal for 40 g of pure fat cannot corrupt the log. Alcohol is out of scope in v1; if it is ever added, the formula needs a 7 kcal/g term.
+The one exception is a **table constant whose calories are not macro-derived at all** — brewed black coffee's ~2 kcal is trace compounds, and 4/4/9 on its macros yields 1. Entries in §7.4 may therefore carry an explicit `kcal`; nothing supplied by a model or a user ever may. A `kcal` supplied by Grok is a cross-check, not a value: if it deviates from the derived figure by more than 15%, keep the derived number and write an `error`-kind row to `events` with both. This is what makes §2’s “deterministic math” true — the same macros always produce the same calories, and a model that returns 250 kcal for 40 g of pure fat cannot corrupt the log. Alcohol is out of scope in v1; if it is ever added, the formula needs a 7 kcal/g term.
 
 ### 7.3 Vision (Grok)
 

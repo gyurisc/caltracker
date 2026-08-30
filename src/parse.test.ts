@@ -1,0 +1,104 @@
+import { describe, expect, it } from 'vitest'
+import { mealTagFromClock, parseMessage } from './parse.ts'
+
+const at = (hhmm: string) => new Date(`2026-08-30T${hhmm}:00Z`)
+
+function items(msg: string, now = at('12:00')) {
+  const r = parseMessage(msg, now)
+  if (!r.ok) throw new Error(`did not parse: ${JSON.stringify(r.unmatched)}`)
+  return r.items
+}
+
+describe('black coffee', () => {
+  it('logs 2 kcal without an API call', () => {
+    const [c] = items('black coffee')
+    expect(c!.name).toBe('black coffee')
+    expect(c!.kcal).toBe(2)
+  })
+})
+
+describe('minced meat 170g cooked', () => {
+  it('lands inside the PRD §13.2 band of 361-489 kcal and 37-50 g protein', () => {
+    const [m] = items('minced meat 170g cooked')
+    expect(m!.grams).toBe(170)
+    expect(m!.cooked).toBe(true)
+    expect(m!.kcal).toBeGreaterThanOrEqual(361)
+    expect(m!.kcal).toBeLessThanOrEqual(489)
+    expect(m!.proteinG).toBeGreaterThanOrEqual(37)
+    expect(m!.proteinG).toBeLessThanOrEqual(50)
+  })
+
+  it('reads raw as a different row, not a scaled one', () => {
+    const cooked = items('minced meat 170g cooked')[0]!
+    const raw = items('minced meat 170g raw')[0]!
+    expect(raw.cooked).toBe(false)
+    expect(raw.proteinG).toBeLessThan(cooked.proteinG)
+  })
+})
+
+describe('counts', () => {
+  it('parses "2 eggs" as two units', () => {
+    const [e] = items('2 eggs')
+    expect(e!.grams).toBe(100)
+    expect(e!.proteinG).toBeCloseTo(12.6, 1)
+  })
+
+  it('does not read a weight as a count', () => {
+    const [r] = items('rice 200g')
+    expect(r!.grams).toBe(200)
+  })
+})
+
+describe('multiple items', () => {
+  it('splits a comma list and an "and"', () => {
+    const parsed = items('black coffee, 2 eggs and rice 150g')
+    expect(parsed.map((i) => i.name)).toEqual(['black coffee', 'eggs', 'rice'])
+  })
+
+  it('refuses the whole message when any chunk misses the table', () => {
+    const r = parseMessage('black coffee, pad thai')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.unmatched).toContain('pad thai')
+  })
+})
+
+describe('never drops food silently', () => {
+  it('logs both foods when a chunk has no punctuation', () => {
+    const parsed = items('2 eggs rice 200g')
+    expect(parsed.map((i) => i.name)).toEqual(['eggs', 'rice'])
+    expect(parsed[0]!.grams).toBe(100)
+    expect(parsed[1]!.grams).toBe(200)
+  })
+
+  it('attaches a leading count to the food that follows it, not the one before', () => {
+    const parsed = items('rice 200g 2 eggs')
+    expect(parsed.map((i) => [i.name, i.grams])).toEqual([['rice', 200], ['eggs', 100]])
+  })
+
+  it('refuses the chunk when one of the foods is unknown', () => {
+    const r = parseMessage('chicken quinoa 100g')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.unmatched).toContain('chicken quinoa 100g')
+  })
+
+  it('handles three foods run together', () => {
+    const parsed = items('chicken 200g cooked rice 250g olive oil 14g')
+    expect(parsed.map((i) => i.name)).toEqual(['chicken', 'rice', 'olive oil'])
+  })
+
+  it('reads a common misspelling of minced meat', () => {
+    expect(items('minced meet 180g cooked')[0]!.name).toBe('minced meat')
+  })
+})
+
+describe('meal tags', () => {
+  it('does not crash at midnight', () => {
+    expect(mealTagFromClock(0)).toBe('breakfast')
+    expect(mealTagFromClock(23)).toBe('dinner')
+  })
+
+  it('takes an explicit meal word over the clock', () => {
+    const [c] = items('dinner: steak 200g')
+    expect(c!.mealTag).toBe('dinner')
+  })
+})

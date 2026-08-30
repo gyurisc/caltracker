@@ -1,0 +1,114 @@
+:root {
+  --bg: #0a0b0d;
+  --panel: #111316;
+  --line: #1e2227;
+  --ink: #e6e8ea;
+  --dim: #8b939c;
+  --faint: #575f68;
+  --green: #35c46b;
+  --red: #e5484d;
+  --blue: #4a8cf7;
+  --shade: #1a1e23;
+  --radius: 6px;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; background: var(--bg); }
+
+body {
+  color: var(--ink);
+  font: 14px/1.45 ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 72px; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+h1 { font-size: 15px; margin: 0; letter-spacing: 0.02em; }
+h2 { font-size: 11px; margin: 0 0 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.09em; font-weight: 600; }
+
+.head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.dim { color: var(--dim); }
+.faint { color: var(--faint); }
+.green { color: var(--green); }
+.red { color: var(--red); }
+.blue { color: var(--blue); }
+.caption { color: var(--faint); font-size: 11px; margin-top: 9px; }
+
+textarea, input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  padding: 9px 10px;
+}
+textarea { resize: vertical; min-height: 46px; }
+input:focus, textarea:focus { outline: none; border-color: var(--faint); }
+
+button {
+  background: var(--shade);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  font: inherit;
+  padding: 0 14px;
+  min-height: 44px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--faint); }
+button:disabled { opacity: 0.45; cursor: default; }
+button.on { background: #232a31; border-color: #39424c; color: #fff; }
+
+.row { display: flex; gap: 8px; align-items: center; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; }
+.chip {
+  min-height: 44px; padding: 0 12px; font-size: 12px;
+  background: transparent; color: var(--dim);
+}
+
+/* ---- week columns ---- */
+.cols { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: end; }
+.col { display: flex; flex-direction: column; align-items: stretch; gap: 5px; }
+.track { position: relative; height: 118px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+.shade { position: absolute; left: 0; right: 0; bottom: 0; background: var(--shade); }
+.fill { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 2px 2px 0 0; }
+.fill.ok { background: var(--green); }
+.fill.over { background: var(--red); }
+.fill.empty { background: #1d2733; }
+.fill.protein { background: var(--blue); }
+.fill.protein.hit { background: var(--green); }
+.mark { position: absolute; left: 0; right: 0; height: 1px; background: #9aa4ae; }
+.colcap { font-size: 10px; color: var(--faint); text-align: center; }
+.colcap b { display: block; color: var(--dim); font-weight: 500; }
+
+/* ---- today ---- */
+.bar { height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; position: relative; }
+.bar > span { display: block; height: 100%; }
+.stat { display: flex; justify-content: space-between; font-size: 12px; margin: 12px 0 5px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+td { padding: 7px 0; border-top: 1px solid var(--line); vertical-align: baseline; }
+td.num { text-align: right; white-space: nowrap; color: var(--dim); }
+td.act { text-align: right; width: 44px; }
+.tag { font-size: 9.5px; letter-spacing: 0.08em; color: var(--faint); text-transform: uppercase; }
+/* 44 px hit area, small glyph — density without shrinking the target. */
+.x {
+  background: none; border: 0; color: var(--faint); cursor: pointer;
+  font-size: 15px; line-height: 1; min-height: 44px; min-width: 44px; padding: 0;
+}
+.x:hover { color: var(--red); }
+
+.err { color: var(--red); font-size: 12px; margin-top: 9px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; font-size: 12.5px; }
+.grid2 label { display: block; color: var(--dim); font-size: 11px; margin-bottom: 4px; }
