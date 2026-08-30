@@ -23,7 +23,8 @@ export function todayReport(date = localDate()): string {
   const lines = items.length
     ? items.map((i) => {
         const grams = i.grams ? ` ${i.grams}g${i.cooked == null ? '' : i.cooked ? ' cooked' : ' raw'}` : ''
-        return `${i.time}  ${i.name}${grams} · ${i.protein_g.toFixed(0)}g P · ${n(i.kcal)} kcal`
+        const est = i.provenance === 'measured' ? '' : '~'
+        return `${i.time}  ${i.name}${grams} · ${i.protein_g.toFixed(0)}g P · ${est}${n(i.kcal)} kcal`
       })
     : ['Nothing logged yet.']
 
@@ -33,6 +34,7 @@ export function todayReport(date = localDate()): string {
     '',
     todayLine(date),
     target - t.kcal >= 0 ? `${n(target - t.kcal)} kcal left` : `${n(t.kcal - target)} kcal over`,
+    ...(items.some((i) => i.provenance !== 'measured') ? ['', '~ estimate, never weighed'] : []),
   ].join('\n')
 }
 

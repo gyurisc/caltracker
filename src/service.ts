@@ -30,6 +30,7 @@ export function logText(text: string, opts: { date?: string; time?: string } = {
       fatG: i.fatG,
       kcal: i.kcal,
       source: 'text' as const,
+      provenance: i.provenance,
     })),
   )
 

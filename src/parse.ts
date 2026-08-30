@@ -29,9 +29,20 @@ type FoodEntry = {
   /** Grams for a named portion of THIS food, overriding GENERIC_PORTIONS. */
   portions?: Record<string, number>
   defaultState: 'raw' | 'cooked'
+  /**
+   * Where the macros came from. `reference` is a book/model figure nobody weighed —
+   * shown with a `~` so an un-verified number never passes as a measured one.
+   * `measured` means a scale and a label, entered once. Absent reads as reference.
+   */
+  provenance?: 'measured' | 'reference'
   raw?: Macros
   cooked?: Macros
 }
+
+export type Provenance = 'measured' | 'reference'
+
+export const provenanceOf = (entry: { provenance?: Provenance }): Provenance =>
+  entry.provenance ?? 'reference'
 
 /** Per 100 g unless basis is `each`, in which case macros are per unit. */
 export const FOOD_TABLE: FoodEntry[] = [
@@ -132,6 +143,7 @@ const ALIAS_INDEX: { alias: string; entry: FoodEntry }[] = FOOD_TABLE
 
 export type ParsedItem = {
   name: string
+  provenance: Provenance
   grams: number | null
   cooked: boolean | null
   mealTag: MealTag | null
@@ -330,7 +342,10 @@ function buildItem(entry: FoodEntry, segment: string, mealTag: MealTag | null): 
 
   const isCooked = entry.raw && entry.cooked && entry.basis === 'per100g' ? state === 'cooked' : null
 
-  return { name: entry.key, grams: finalGrams, cooked: isCooked, mealTag, proteinG, carbsG, fatG, kcal }
+  return {
+    name: entry.key, provenance: provenanceOf(entry), grams: finalGrams, cooked: isCooked,
+    mealTag, proteinG, carbsG, fatG, kcal,
+  }
 }
 
 /**

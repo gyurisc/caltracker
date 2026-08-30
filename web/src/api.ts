@@ -11,6 +11,7 @@ export type FoodRow = {
   protein_g: number
   kcal: number
   source: string
+  provenance: 'measured' | 'reference'
 }
 
 export type WeekDay = {

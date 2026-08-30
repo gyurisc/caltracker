@@ -144,6 +144,13 @@ describe('pancake', () => {
   })
 })
 
+describe('provenance', () => {
+  it('marks table rows as reference, since none has been weighed yet', () => {
+    expect(items('black coffee')[0]!.provenance).toBe('reference')
+    expect(items('2 eggs')[0]!.provenance).toBe('reference')
+  })
+})
+
 describe('creatine', () => {
   it('logs the daily dose at zero kcal', () => {
     const [c] = items('5 gram creatine')

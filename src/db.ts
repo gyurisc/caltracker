@@ -57,6 +57,17 @@ db.exec(`
   );
 `)
 
+/**
+ * Additive migrations. `CREATE TABLE IF NOT EXISTS` leaves an existing table alone,
+ * so a new column has to be added explicitly. Safe to run on every boot.
+ */
+const columns = (table: string) =>
+  (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map((c) => c.name)
+
+if (!columns('foods').includes('provenance')) {
+  db.exec("ALTER TABLE foods ADD COLUMN provenance TEXT NOT NULL DEFAULT 'reference'")
+}
+
 export type DayRow = {
   date: string
   activity: Activity
@@ -79,6 +90,7 @@ export type FoodRow = {
   fat_g: number
   kcal: number
   source: 'text' | 'photo' | 'seed'
+  provenance: 'measured' | 'reference'
   photo_path: string | null
 }
 
@@ -171,14 +183,15 @@ export type NewFood = {
   fatG: number
   kcal: number
   source: 'text' | 'photo' | 'seed'
+  provenance?: 'measured' | 'reference'
   photoPath?: string | null
 }
 
 const insertFood = db.prepare(`
   INSERT INTO foods (id, date, time, meal_tag, name, grams, cooked,
-                     protein_g, carbs_g, fat_g, kcal, source, photo_path)
+                     protein_g, carbs_g, fat_g, kcal, source, provenance, photo_path)
   VALUES (@id, @date, @time, @meal_tag, @name, @grams, @cooked,
-          @protein_g, @carbs_g, @fat_g, @kcal, @source, @photo_path)
+          @protein_g, @carbs_g, @fat_g, @kcal, @source, @provenance, @photo_path)
 `)
 
 /** Writes all items in one transaction — never while waiting on an API (PRD §8). */
@@ -201,6 +214,7 @@ export const addFoods = db.transaction((items: NewFood[]): FoodRow[] => {
       fat_g: item.fatG,
       kcal: item.kcal,
       source: item.source,
+      provenance: item.provenance ?? 'reference',
       photo_path: item.photoPath ?? null,
     })
     written.push(db.prepare('SELECT * FROM foods WHERE id = ?').get(id) as FoodRow)

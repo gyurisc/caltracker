@@ -42,7 +42,7 @@ export default function App() {
 
       {error && <p className="err">{error}</p>}
       <p className="caption">
-        eaten {n(totals.kcal)} · {totals.items} items · estimates, not medical advice
+        eaten {n(totals.kcal)} · {totals.items} items · ~ never weighed · not medical advice
       </p>
     </div>
   )
@@ -168,7 +168,10 @@ function Today({ state }: { state: State }) {
                 </td>
                 <td className="num faint">{i.time}</td>
                 <td className="num">{Math.round(i.protein_g)} g</td>
-                <td className="num">{n(i.kcal)}</td>
+                <td className="num">
+                  {i.provenance !== 'measured' && <span className="faint" title="estimate, never weighed">~</span>}
+                  {n(i.kcal)}
+                </td>
               </tr>
             ))}
           </tbody>
