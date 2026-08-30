@@ -36,6 +36,13 @@ process.on('unhandledRejection', (reason) => {
 })
 process.on('uncaughtException', (err) => {
   console.error('[uncaughtException]', err)
+  // A port clash must be fatal. The catch-all above otherwise keeps the process
+  // alive with no HTTP server but a live bot, so a second instance quietly
+  // double-polls Telegram and `ps` shows something that looks healthy.
+  if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+    console.error(`[fatal] port ${PORT} is already in use — is caltrack already running? (pnpm serve:status)`)
+    process.exit(1)
+  }
 })
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
