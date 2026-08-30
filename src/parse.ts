@@ -107,6 +107,12 @@ export const FOOD_TABLE: FoodEntry[] = [
     raw: { proteinG: 6.3, carbsG: 0.4, fatG: 4.8 },
     cooked: { proteinG: 6.3, carbsG: 0.4, fatG: 4.8 } },
 
+  // ~4 inch plain pancake, USDA. `each`, because nobody weighs a pancake.
+  { key: 'pancake', aliases: ['pancakes', 'pancake'],
+    basis: 'each', unitGrams: 40, defaultState: 'cooked',
+    cooked: { proteinG: 2.4, carbsG: 11, fatG: 3.7 },
+    raw: { proteinG: 2.4, carbsG: 11, fatG: 3.7 } },
+
   { key: 'avocado', aliases: ['avocado'],
     basis: 'per100g', defaultGrams: 200, defaultState: 'raw',
     raw: { proteinG: 2, carbsG: 8.5, fatG: 15 } },

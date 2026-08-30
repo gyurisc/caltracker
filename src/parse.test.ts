@@ -125,6 +125,25 @@ describe('everyday phrasing', () => {
   })
 })
 
+describe('pancake', () => {
+  it('logs one pancake with derived kcal', () => {
+    const [p] = items('one pancake')
+    expect(p!.name).toBe('pancake')
+    expect(p!.grams).toBe(40)
+    expect(p!.kcal).toBe(87)
+  })
+
+  it('scales by count and accepts the plural', () => {
+    const [p] = items('3 pancakes')
+    expect(p!.grams).toBe(120)
+    expect(p!.kcal).toBe(261)
+  })
+
+  it('still refuses palacsinta, which is not in the table', () => {
+    expect(parseMessage('1 palacsinta', at('12:00')).ok).toBe(false)
+  })
+})
+
 describe('meal tags', () => {
   it('does not crash at midnight', () => {
     expect(mealTagFromClock(0)).toBe('breakfast')
