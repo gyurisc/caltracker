@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { DB_PATH, localDate, localStamp, weekdayOf } from './config.ts'
+import { DB_PATH, lastDays, localDate, localStamp, weekdayOf } from './config.ts'
 import {
   type Activity, type Settings, DEFAULT_SETTINGS, defaultActivityFor,
 } from './nutrition.ts'
@@ -256,6 +256,37 @@ export function totalsFor(dates: string[]): Record<string, DayTotals> {
 }
 
 // ------------------------------------------------------------------ events
+
+export type Miss = { phrase: string; count: number; lastSeen: string; lastText: string }
+
+/**
+ * Refused phrases from `parse_miss` events, most frequent first — the vocabulary
+ * backlog. Grouped on the unmatched phrase, not the whole message, so
+ * `2 eggs and pad thai` and `pad thai` count as the same missing food.
+ */
+export function recentMisses(days = 30): Miss[] {
+  const since = lastDays(days)[0]!
+  const rows = db
+    .prepare("SELECT ts, payload FROM events WHERE kind = 'error' AND ts >= ? ORDER BY ts")
+    .all(since) as { ts: string; payload: string }[]
+
+  const byPhrase = new Map<string, Miss>()
+  for (const row of rows) {
+    const p = JSON.parse(row.payload) as { kind?: string; text?: string; unmatched?: string[] }
+    if (p.kind !== 'parse_miss') continue
+    for (const phrase of p.unmatched ?? []) {
+      const hit = byPhrase.get(phrase)
+      if (hit) {
+        hit.count += 1
+        hit.lastSeen = row.ts
+        hit.lastText = p.text ?? phrase
+      } else {
+        byPhrase.set(phrase, { phrase, count: 1, lastSeen: row.ts, lastText: p.text ?? phrase })
+      }
+    }
+  }
+  return [...byPhrase.values()].sort((a, b) => b.count - a.count || b.lastSeen.localeCompare(a.lastSeen))
+}
 
 export function logEvent(kind: 'log' | 'undo' | 'weight' | 'activity' | 'error', payload: unknown): void {
   db.prepare('INSERT INTO events (id, ts, kind, payload) VALUES (?, ?, ?, ?)')

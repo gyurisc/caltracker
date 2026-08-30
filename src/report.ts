@@ -1,5 +1,5 @@
 import { localDate } from './config.ts'
-import { foodsOn, getDay, getSettings, totalsFor } from './db.ts'
+import { foodsOn, getDay, getSettings, recentMisses, totalsFor } from './db.ts'
 import { activityLabel, targetKcal } from './nutrition.ts'
 
 export const n = (v: number) => Math.round(v).toLocaleString('en-US')
@@ -33,5 +33,24 @@ export function todayReport(date = localDate()): string {
     '',
     todayLine(date),
     target - t.kcal >= 0 ? `${n(target - t.kcal)} kcal left` : `${n(t.kcal - target)} kcal over`,
+  ].join('\n')
+}
+
+/** The vocabulary backlog: what the parser refused, most frequent first. */
+export function missesReport(days = 30): string {
+  const misses = recentMisses(days)
+  if (misses.length === 0) return `No refused messages in the last ${days} days.`
+
+  const width = Math.max(...misses.map((m) => m.phrase.length))
+  const lines = misses.map((m) => {
+    const times = m.count === 1 ? '' : ` ×${m.count}`
+    return `${m.phrase.padEnd(width)}${times}  · last ${m.lastSeen.replace('T', ' ')}  "${m.lastText}"`
+  })
+
+  return [
+    `refused in the last ${days} days · ${misses.length} phrase${misses.length === 1 ? '' : 's'}`,
+    ...lines,
+    '',
+    'Each is a missing FOOD_TABLE row in src/parse.ts.',
   ].join('\n')
 }
