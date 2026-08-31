@@ -108,6 +108,30 @@ describe('telegram logging', () => {
     expect(foods()).toHaveLength(0)
   })
 
+  it('/food teaches a new food that logs on the next message', async () => {
+    await bot.handleUpdate(update(OWNER, 'kefir 200g') as never)
+    expect(sent.at(-1)).toContain('not in the local table')
+
+    await bot.handleUpdate(update(OWNER, '/food kefir per100 p3.3 c4 f1') as never)
+    expect(sent.at(-1)).toContain('added kefir')
+
+    // No restart, no reload: the very next message parses it.
+    await bot.handleUpdate(update(OWNER, 'kefir 200g') as never)
+    expect(sent.at(-1)).toContain('+ kefir')
+    expect(foods().at(-1)!.name).toBe('kefir')
+    expect(foods().at(-1)!.kcal).toBe(76)
+  })
+
+  it('/food refuses an alias that belongs to another food', async () => {
+    await bot.handleUpdate(update(OWNER, '/food fake per100 p1 c1 f1 +rice') as never)
+    expect(sent.at(-1)).toContain('already belongs to rice')
+  })
+
+  it('/food with no arguments explains itself', async () => {
+    await bot.handleUpdate(update(OWNER, '/food') as never)
+    expect(sent.at(-1)).toContain('usage:')
+  })
+
   it('/foods lists the vocabulary', async () => {
     await bot.handleUpdate(update(OWNER, '/foods') as never)
     expect(sent.at(-1)).toContain('black coffee')

@@ -1,0 +1,60 @@
+import { describe, expect, it } from 'vitest'
+import { parseFoodCommand } from './foodcmd.ts'
+
+const ok = (s: string) => {
+  const r = parseFoodCommand(s)
+  if (!r.ok) throw new Error(r.error)
+  return r.entry
+}
+const err = (s: string) => {
+  const r = parseFoodCommand(s)
+  if (r.ok) throw new Error('expected a refusal')
+  return r.error
+}
+
+describe('/food', () => {
+  it('reads a per-100g row off a label', () => {
+    const e = ok('kefir per100 p3.3 c4 f1')
+    expect(e.key).toBe('kefir')
+    expect(e.basis).toBe('per100g')
+    expect(e.raw).toEqual({ proteinG: 3.3, carbsG: 4, fatG: 1 })
+    expect(e.provenance).toBe('measured')
+  })
+
+  it('reads a countable row with its unit weight', () => {
+    const e = ok('bagel each 85g p9 c48 f1.5')
+    expect(e.basis).toBe('each')
+    expect(e.unitGrams).toBe(85)
+  })
+
+  it('keeps a multi-word name together', () => {
+    expect(ok('peanut butter per100 p25 c20 f50').key).toBe('peanut butter')
+  })
+
+  it('takes a default serving, state and extra aliases', () => {
+    const e = ok('skyr per100 p11.5 c4 f0.2 g170 cooked +icelandic skyr, isey')
+    expect(e.defaultGrams).toBe(170)
+    expect(e.defaultState).toBe('cooked')
+    expect(e.cooked).toEqual(e.raw)
+    expect(e.aliases).toEqual(['icelandic skyr', 'isey', 'skyr'])
+  })
+
+  it('marks a guess as reference so it renders with ~', () => {
+    expect(ok('kefir per100 p3.3 c4 f1 est').provenance).toBe('reference')
+  })
+
+  it('never accepts kcal — there is no syntax for it', () => {
+    expect(err('kefir per100 p3.3 c4 f1 kcal60')).toContain('did not understand')
+  })
+
+  it('refuses macros that cannot fit in 100 g', () => {
+    expect(err('mystery per100 p50 c50 f50')).toContain('more than 100 g')
+  })
+
+  it('refuses an incomplete row', () => {
+    expect(err('kefir per100 p3.3')).toContain('need all three macros')
+    expect(err('bagel each p9 c48 f1.5')).toContain('weight of one')
+    expect(err('kefir')).toContain('usage:')
+    expect(err('')).toContain('usage:')
+  })
+})

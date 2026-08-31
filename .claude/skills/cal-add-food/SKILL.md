@@ -5,6 +5,19 @@ description: Use when adding a food, alias, or portion word to the caltrack pars
 
 # Adding a food to the parser
 
+**First ask whether this needs code at all.** `/food` in Telegram adds or updates a row
+live, with no edit, no sync and no restart:
+
+```
+/food kefir per100 p3.3 c4 f1
+/food bagel each 85g p9 c48 f1.5
+```
+
+That is the right path for anything read off a packet. Use the steps below only when
+changing what a *fresh* database is seeded with, or when the row needs something `/food`
+cannot express — separate raw and cooked macros, custom portion nouns, or a `kcal`
+override.
+
 The parser refuses a whole message when any word in a chunk is unrecognized. That is
 deliberate — a silent undercount that looks like success is the worst failure this app
 has. So growing the vocabulary is the normal way to fix a refusal, and it must be done

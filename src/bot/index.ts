@@ -3,9 +3,11 @@ import { TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../co
 import {
   deleteFood, getDay, getSettings, mostRecentFood, setActivity, setWeight, totalsFor,
 } from '../db.ts'
-import { activityLabel, normalizeActivity, targetKcal } from '../nutrition.ts'
+import { parseFoodCommand } from '../foodcmd.ts'
+import { activityLabel, deriveKcal, normalizeActivity, targetKcal } from '../nutrition.ts'
 import { n, todayLine, todayReport, vocabReport } from '../report.ts'
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
+import { saveFood, vocabTable } from '../vocab.ts'
 
 export function createBot(): Bot {
   const bot = new Bot(TELEGRAM_BOT_TOKEN)
@@ -25,6 +27,7 @@ export function createBot(): Bot {
         '',
         '/today — eaten, target, items',
         '/foods — every food I know',
+        '/food kefir per100 p3.3 c4 f1 — teach me a food',
         '/week — last 7 days',
         '/weight 74.2 — morning weigh-in',
         '/activity rest|lift|cycle',
@@ -40,6 +43,35 @@ export function createBot(): Bot {
   bot.command('today', (ctx) => ctx.reply(todayReport()))
 
   bot.command('foods', (ctx) => ctx.reply(vocabReport()))
+
+  bot.command('food', (ctx) => {
+    const result = parseFoodCommand((ctx.match ?? '').toString())
+    if (!result.ok) return ctx.reply(result.error)
+
+    const { entry } = result
+    // An alias that already belongs to a different food would shadow it, and
+    // the longest-alias rule makes which one wins non-obvious. Refuse instead.
+    const clash = vocabTable().entries.find(
+      (e) => e.key !== entry.key && e.aliases.some((a) => entry.aliases.includes(a)),
+    )
+    if (clash) return ctx.reply(`"${entry.aliases.find((a) => clash.aliases.includes(a))}" already belongs to ${clash.key}`)
+
+    const known = vocabTable().entries.some((e) => e.key === entry.key)
+    saveFood(entry)
+
+    const m = entry.raw!
+    const kcal = deriveKcal(m.proteinG, m.carbsG, m.fatG)
+    const per = entry.basis === 'each' ? `each ${entry.unitGrams} g` : 'per 100 g'
+    return ctx.reply(
+      [
+        `${known ? 'updated' : 'added'} ${entry.key} · ${per}`,
+        `${n(kcal)} kcal · ${m.proteinG} g P · ${m.carbsG} g C · ${m.fatG} g F`,
+        entry.provenance === 'measured' ? 'measured — no ~' : 'estimate — shows ~',
+        '',
+        `try: ${entry.key}${entry.basis === 'per100g' ? ' 100g' : ''}`,
+      ].join('\n'),
+    )
+  })
 
   bot.command('week', (ctx) => {
     const s = getSettings()
