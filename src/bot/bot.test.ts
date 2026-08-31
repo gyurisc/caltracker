@@ -138,6 +138,11 @@ describe('telegram logging', () => {
     expect(sent.at(-1)).toContain('usage:')
   })
 
+  it('/trend says what it still needs before it can estimate', async () => {
+    await bot.handleUpdate(update(OWNER, '/trend') as never)
+    expect(sent.at(-1)).toContain('weigh-ins')
+  })
+
   it('/foods lists the vocabulary', async () => {
     await bot.handleUpdate(update(OWNER, '/foods') as never)
     expect(sent.at(-1)).toContain('black coffee')

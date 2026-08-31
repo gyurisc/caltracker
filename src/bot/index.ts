@@ -6,7 +6,7 @@ import {
 import { parseFoodCommand } from '../foodcmd.ts'
 import { bareFoodName } from '../parse.ts'
 import { activityLabel, deriveKcal, normalizeActivity, targetKcal } from '../nutrition.ts'
-import { n, todayLine, todayReport, vocabReport } from '../report.ts'
+import { calibrationReport, n, todayLine, todayReport, vocabReport } from '../report.ts'
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
 import { saveFood, vocabTable } from '../vocab.ts'
 
@@ -30,6 +30,7 @@ export function createBot(): Bot {
         '/foods — every food I know',
         '/food kefir per100 p3.3 c4 f1 — teach me a food',
         '/week — last 7 days',
+        '/trend — measured burn rate vs your targets',
         '/weight 74.2 — morning weigh-in',
         '/activity rest|lift|cycle',
         '/undo — remove the most recent item',
@@ -44,6 +45,8 @@ export function createBot(): Bot {
   bot.command('today', (ctx) => ctx.reply(todayReport()))
 
   bot.command('foods', (ctx) => ctx.reply(vocabReport()))
+
+  bot.command('trend', (ctx) => ctx.reply(calibrationReport()))
 
   bot.command('food', (ctx) => {
     const result = parseFoodCommand((ctx.match ?? '').toString())

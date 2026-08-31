@@ -1,5 +1,6 @@
-import { localDate } from './config.ts'
-import { foodsOn, getDay, getSettings, recentMisses, totalsFor } from './db.ts'
+import { lastDays, localDate } from './config.ts'
+import { calibrate, TARGET_RATE_HI, TARGET_RATE_LO, type DayPoint } from './calibrate.ts'
+import { foodsOn, getDay, getSettings, getWeights, recentMisses, totalsFor } from './db.ts'
 import { provenanceOf } from './foods.ts'
 import { vocabTable } from './vocab.ts'
 import { activityLabel, deriveKcal, targetKcal } from './nutrition.ts'
@@ -82,5 +83,81 @@ export function vocabReport(): string {
     ...lines,
     '',
     '~ never weighed · anything else is refused, not guessed',
+  ].join('\n')
+}
+
+/**
+ * The feedback loop: what the scale says about the targets. Intake is what you
+ * think you ate; the weight trend says whether the model is calibrated.
+ */
+export function calibrationReport(windowDays = 28): string {
+  const dates = lastDays(windowDays)
+  const totals = totalsFor(dates)
+  const weights = getWeights(dates)
+  const days: DayPoint[] = dates.map((d) => ({
+    date: d,
+    kcal: totals[d]?.kcal ?? 0,
+    weightKg: weights[d] ?? null,
+  }))
+
+  const c = calibrate(days)
+  const s = getSettings()
+  const head = `last ${windowDays} days · ${c.loggedDays} logged · ${c.weighIns} weigh-ins`
+
+  if (c.verdict === 'not-enough-data') {
+    const needs = [
+      c.loggedDays < 10 ? `${10 - c.loggedDays} more logged days` : null,
+      c.weighIns < 4 ? `${4 - c.weighIns} more weigh-ins` : null,
+    ].filter(Boolean)
+    return [
+      head,
+      c.avgKcal == null ? 'no intake yet' : `${n(c.avgKcal)} kcal/day average`,
+      c.trendWeightKg == null ? 'no weigh-ins yet' : `${c.trendWeightKg} kg trend`,
+      '',
+      needs.length ? `need ${needs.join(' and ')} before I can estimate` : 'not enough spread yet',
+      'weigh every morning, same conditions — that is the input that unlocks this',
+    ].join('\n')
+  }
+
+  if (c.verdict === 'implausible') {
+    const pct0 = (c.ratePctPerWeek ?? 0) * 100
+    return [
+      head,
+      '',
+      `${n(c.avgKcal!)} kcal/day average`,
+      `${c.trendWeightKg} kg trend · ${c.rateKgPerWeek! > 0 ? '+' : ''}${c.rateKgPerWeek} kg/week (${pct0.toFixed(2)}%)`,
+      '',
+      'these do not hold together, so I will not estimate a burn rate.',
+      'usually mixed sample data, a mistyped weigh-in, or pounds entered as kilos.',
+      'pnpm seed:wipe clears the demo fortnight and leaves real rows alone.',
+    ].join('\n')
+  }
+
+  const pct = (c.ratePctPerWeek ?? 0) * 100
+  const band = `${(TARGET_RATE_LO * 100).toFixed(2)}–${(TARGET_RATE_HI * 100).toFixed(2)}%`
+  const verdictLine = {
+    'on-track': 'on track — change nothing',
+    'too-slow': `slower than ${band}/week`,
+    'too-fast': `faster than ${band}/week`,
+  }[c.verdict]
+
+  const assumed = s.maintenance.rest
+  return [
+    head,
+    '',
+    `${n(c.avgKcal!)} kcal/day average`,
+    `${c.trendWeightKg} kg trend · ${c.rateKgPerWeek! > 0 ? '+' : ''}${c.rateKgPerWeek} kg/week (${pct.toFixed(2)}%)`,
+    '',
+    `measured burn ≈ ${n(c.effectiveTDEE!)} kcal/day`,
+    `assumed rest maintenance ${n(assumed)} · off by ${n(c.effectiveTDEE! - assumed)}`,
+    '',
+    verdictLine,
+    c.adjustKcal === 0
+      ? ''
+      : c.adjustKcal > 0
+        ? `eat about ${n(c.adjustKcal)} kcal/day more`
+        : `eat about ${n(Math.abs(c.adjustKcal))} kcal/day less`,
+    '',
+    'measured burn comes from your own intake and weight trend, not a calculator.',
   ].join('\n')
 }
