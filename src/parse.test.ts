@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mealTagFromClock, parseMessage } from './parse.ts'
+import { bareFoodName, mealTagFromClock, parseMessage } from './parse.ts'
 
 const at = (hhmm: string) => new Date(`2026-08-30T${hhmm}:00Z`)
 
@@ -159,6 +159,19 @@ describe('skyr', () => {
 
   it('knows a pot is 170 g, not the generic 150', () => {
     expect(items('a pot of skyr')[0]!.grams).toBe(170)
+  })
+})
+
+describe('bareFoodName', () => {
+  it('strips quantities, units and filler from a refused chunk', () => {
+    expect(bareFoodName('1 palacsinta')).toBe('palacsinta')
+    expect(bareFoodName('5 gram kreatin')).toBe('kreatin')
+    expect(bareFoodName('a bowl of pho')).toBe('pho')
+    expect(bareFoodName('200g grilled halloumi')).toBe('halloumi')
+  })
+
+  it('is empty when nothing food-shaped is left', () => {
+    expect(bareFoodName('200g')).toBe('')
   })
 })
 

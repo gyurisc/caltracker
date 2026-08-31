@@ -189,6 +189,14 @@ function residual(chunk: string, matches: Match[]): string {
 }
 
 /**
+ * The food-shaped part of a refused chunk: `1 palacsinta` -> `palacsinta`.
+ * Used to prefill a `/food` template, so the reply to a refusal is actionable.
+ */
+export function bareFoodName(chunk: string): string {
+  return residual(chunk.toLowerCase(), [])
+}
+
+/**
  * A count immediately before a food belongs to that food, not to the previous
  * one: in `rice 200g 2 eggs` the `2` is the eggs'.
  */

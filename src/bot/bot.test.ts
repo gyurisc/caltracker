@@ -108,6 +108,12 @@ describe('telegram logging', () => {
     expect(foods()).toHaveLength(0)
   })
 
+  it('hands back a /food template with the quantity stripped', async () => {
+    await bot.handleUpdate(update(OWNER, '1 palacsinta') as never)
+    expect(sent.at(-1)).toContain('/food palacsinta per100 p? c? f?')
+    expect(sent.at(-1)).not.toContain('src/parse.ts')
+  })
+
   it('/food teaches a new food that logs on the next message', async () => {
     await bot.handleUpdate(update(OWNER, 'kefir 200g') as never)
     expect(sent.at(-1)).toContain('not in the local table')

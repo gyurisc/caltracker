@@ -4,6 +4,7 @@ import {
   deleteFood, getDay, getSettings, mostRecentFood, setActivity, setWeight, totalsFor,
 } from '../db.ts'
 import { parseFoodCommand } from '../foodcmd.ts'
+import { bareFoodName } from '../parse.ts'
 import { activityLabel, deriveKcal, normalizeActivity, targetKcal } from '../nutrition.ts'
 import { n, todayLine, todayReport, vocabReport } from '../report.ts'
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
@@ -131,8 +132,21 @@ export function createBot(): Bot {
     const result = logText(text)
     if (!result.ok) {
       if (result.unmatched.length === 0) return ctx.reply('nothing to log there.')
+      // Hand back a ready /food line per unknown phrase: editing three numbers
+      // beats retyping the meal, and it is the only way to add a food now.
+      const templates = result.unmatched
+        .map((phrase) => bareFoodName(phrase))
+        .filter(Boolean)
+        .slice(0, 3)
+        .map((name) => `/food ${name} per100 p? c? f?`)
+
       return ctx.reply(
-        `not in the local table: ${result.unmatched.join(', ')}\nTry a listed food, or add it to src/parse.ts.`,
+        [
+          `not in the local table: ${result.unmatched.join(', ')}`,
+          ...(templates.length ? ['', 'add it with the packet macros:', ...templates] : []),
+          '',
+          '/foods lists what I know',
+        ].join('\n'),
       )
     }
     const kcal = result.rows.reduce((s, r) => s + r.kcal, 0)
