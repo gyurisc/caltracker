@@ -5,6 +5,7 @@ import {
 } from '../db.ts'
 import { parseFoodCommand } from '../foodcmd.ts'
 import { bareFoodName } from '../parse.ts'
+import { nearMatches } from '../similar.ts'
 import { activityLabel, deriveKcal, normalizeActivity, targetKcal } from '../nutrition.ts'
 import { calibrationReport, n, todayLine, todayReport, vocabReport } from '../report.ts'
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
@@ -61,6 +62,9 @@ export function createBot(): Bot {
     if (clash) return ctx.reply(`"${entry.aliases.find((a) => clash.aliases.includes(a))}" already belongs to ${clash.key}`)
 
     const known = vocabTable().entries.some((e) => e.key === entry.key)
+    // Not fatal — two genuinely similar foods are allowed — but a near-duplicate
+    // is usually a typo, and a silent second row is hard to notice later.
+    const nearby = known ? [] : nearMatches(entry.key, vocabTable().entries.map((e) => e.key), 1)
     saveFood(entry)
 
     const m = entry.raw!
@@ -71,6 +75,7 @@ export function createBot(): Bot {
         `${known ? 'updated' : 'added'} ${entry.key} · ${per}`,
         `${n(kcal)} kcal · ${m.proteinG} g P · ${m.carbsG} g C · ${m.fatG} g F`,
         entry.provenance === 'measured' ? 'measured — no ~' : 'estimate — shows ~',
+        ...(nearby.length ? ['', `note: very close to "${nearby[0]}" — a typo? /foods to check`] : []),
         '',
         `try: ${entry.key}${entry.basis === 'per100g' ? ' 100g' : ''}`,
       ].join('\n'),
@@ -135,18 +140,30 @@ export function createBot(): Bot {
     const result = logText(text)
     if (!result.ok) {
       if (result.unmatched.length === 0) return ctx.reply('nothing to log there.')
-      // Hand back a ready /food line per unknown phrase: editing three numbers
-      // beats retyping the meal, and it is the only way to add a food now.
-      const templates = result.unmatched
-        .map((phrase) => bareFoodName(phrase))
-        .filter(Boolean)
-        .slice(0, 3)
-        .map((name) => `/food ${name} per100 p? c? f?`)
+      const aliases = vocabTable().entries.flatMap((e) => e.aliases)
+      const names = result.unmatched.map(bareFoodName).filter(Boolean).slice(0, 3)
 
+      // A typo one letter from a known food gets a "did you mean", never a
+      // template — offering to add `pespi` beside `pepsi` is worse than useless.
+      const suggestions = names.flatMap((name) => nearMatches(name, aliases, 2))
+      if (suggestions.length) {
+        return ctx.reply(
+          [
+            `not in the local table: ${result.unmatched.join(', ')}`,
+            '',
+            `did you mean: ${[...new Set(suggestions)].join(', ')}?`,
+          ].join('\n'),
+        )
+      }
+
+      // Otherwise hand back a ready /food line: editing three numbers beats
+      // retyping the meal, and it is how a food gets added now.
       return ctx.reply(
         [
           `not in the local table: ${result.unmatched.join(', ')}`,
-          ...(templates.length ? ['', 'add it with the packet macros:', ...templates] : []),
+          ...(names.length
+            ? ['', 'add it with the packet macros:', ...names.map((name) => `/food ${name} per100 p? c? f?`)]
+            : []),
           '',
           '/foods lists what I know',
         ].join('\n'),

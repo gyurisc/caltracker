@@ -108,6 +108,20 @@ describe('telegram logging', () => {
     expect(foods()).toHaveLength(0)
   })
 
+  it('suggests the real food behind a typo instead of a template', async () => {
+    await bot.handleUpdate(update(OWNER, '/food pepsi zero sugar per100 p0 c0 f0') as never)
+    await bot.handleUpdate(update(OWNER, 'Pespi Zero Sugar 250ml') as never)
+
+    expect(sent.at(-1)).toContain('did you mean: pepsi zero sugar?')
+    expect(sent.at(-1)).not.toContain('/food pespi')
+    expect(foods().some((f) => f.name.includes('pespi'))).toBe(false)
+  })
+
+  it('warns when /food adds something one edit from an existing food', async () => {
+    await bot.handleUpdate(update(OWNER, '/food ricce per100 p2.7 c28 f0.3') as never)
+    expect(sent.at(-1)).toContain('very close to "rice"')
+  })
+
   it('hands back a /food template with the quantity stripped', async () => {
     await bot.handleUpdate(update(OWNER, '1 palacsinta') as never)
     expect(sent.at(-1)).toContain('/food palacsinta per100 p? c? f?')
