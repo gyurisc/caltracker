@@ -1,6 +1,6 @@
 import { lastDays, localDate } from './config.ts'
 import { calibrate, TARGET_RATE_HI, TARGET_RATE_LO, type DayPoint } from './calibrate.ts'
-import { foodsOn, getDay, getSettings, getWeights, recentMisses, totalsFor } from './db.ts'
+import { foodsOn, getDay, getSettings, getSteps, getWeights, recentMisses, totalsFor } from './db.ts'
 import { provenanceOf } from './foods.ts'
 import { vocabTable } from './vocab.ts'
 import { activityLabel, deriveKcal, targetKcal } from './nutrition.ts'
@@ -104,6 +104,13 @@ export function calibrationReport(windowDays = 28): string {
   const s = getSettings()
   const head = `last ${windowDays} days · ${c.loggedDays} logged · ${c.weighIns} weigh-ins`
 
+  // Steps explain a trend, they never feed the target — the weight trend is the
+  // calibration mechanism, and a second activity estimate would muddy it.
+  const stepValues = Object.values(getSteps(dates)).filter((v): v is number => v != null)
+  const stepLine = stepValues.length
+    ? `${n(Math.round(stepValues.reduce((a, b) => a + b, 0) / stepValues.length))} steps/day over ${stepValues.length} days`
+    : null
+
   if (c.verdict === 'not-enough-data') {
     const needs = [
       c.loggedDays < 10 ? `${10 - c.loggedDays} more logged days` : null,
@@ -113,6 +120,7 @@ export function calibrationReport(windowDays = 28): string {
       head,
       c.avgKcal == null ? 'no intake yet' : `${n(c.avgKcal)} kcal/day average`,
       c.trendWeightKg == null ? 'no weigh-ins yet' : `${c.trendWeightKg} kg trend`,
+      ...(stepLine ? [stepLine] : []),
       '',
       needs.length ? `need ${needs.join(' and ')} before I can estimate` : 'not enough spread yet',
       'weigh every morning, same conditions — that is the input that unlocks this',
@@ -151,6 +159,7 @@ export function calibrationReport(windowDays = 28): string {
     `measured burn ≈ ${n(c.effectiveTDEE!)} kcal/day`,
     `assumed rest maintenance ${n(assumed)} · off by ${n(c.effectiveTDEE! - assumed)}`,
     '',
+    ...(stepLine ? [stepLine, ''] : []),
     verdictLine,
     c.adjustKcal === 0
       ? ''

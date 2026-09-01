@@ -85,6 +85,10 @@ if (!columns('foods').includes('provenance')) {
   db.exec("ALTER TABLE foods ADD COLUMN provenance TEXT NOT NULL DEFAULT 'reference'")
 }
 
+if (!columns('days').includes('steps')) {
+  db.exec('ALTER TABLE days ADD COLUMN steps INTEGER')
+}
+
 export type DayRow = {
   date: string
   activity: Activity
@@ -92,6 +96,7 @@ export type DayRow = {
   workout_name: string | null
   workout_minutes: number | null
   workout_kcal: number | null
+  steps: number | null
 }
 
 export type FoodRow = {
@@ -170,6 +175,23 @@ export function setWeight(date: string, kg: number): DayRow {
   db.prepare('UPDATE days SET weight_kg = ? WHERE date = ?').run(kg, date)
   logEvent('weight', { date, kg })
   return db.prepare('SELECT * FROM days WHERE date = ?').get(date) as DayRow
+}
+
+/** Steps for a finished day. Context for reading the trend, not an input to it. */
+export function setSteps(date: string, steps: number): DayRow {
+  ensureDay(date)
+  db.prepare('UPDATE days SET steps = ? WHERE date = ?').run(steps, date)
+  logEvent('activity', { date, steps })
+  return db.prepare('SELECT * FROM days WHERE date = ?').get(date) as DayRow
+}
+
+export function getSteps(dates: string[]): Record<string, number | null> {
+  if (dates.length === 0) return {}
+  const q = dates.map(() => '?').join(',')
+  const rows = db
+    .prepare(`SELECT date, steps FROM days WHERE date IN (${q})`)
+    .all(...dates) as { date: string; steps: number | null }[]
+  return Object.fromEntries(rows.map((r) => [r.date, r.steps]))
 }
 
 export function getDay(date: string): DayRow {

@@ -1,7 +1,7 @@
 import { Bot } from 'grammy'
-import { TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
+import { addDays, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
 import {
-  deleteFood, getDay, getSettings, mostRecentFood, setActivity, setWeight, totalsFor,
+  deleteFood, getDay, getSettings, mostRecentFood, setActivity, setSteps, setWeight, totalsFor,
 } from '../db.ts'
 import { parseFoodCommand } from '../foodcmd.ts'
 import { bareFoodName } from '../parse.ts'
@@ -34,6 +34,7 @@ export function createBot(): Bot {
         '/trend — measured burn rate vs your targets',
         '/weight 74.2 — morning weigh-in',
         '/activity rest|lift|cycle',
+        '/steps 12000 — yesterday, from your phone',
         '/undo — remove the most recent item',
         '/target — maintenance, deficit, goals',
         '',
@@ -124,6 +125,22 @@ export function createBot(): Bot {
     if (!Number.isFinite(kg) || kg <= 0 || kg > 400) return ctx.reply('usage: /weight 74.2')
     setWeight(localDate(), kg)
     return ctx.reply(`weight ${kg} kg · ${localDate()}`)
+  })
+
+  bot.command('steps', (ctx) => {
+    const arg = (ctx.match ?? '').toString().trim().toLowerCase()
+    // Defaults to yesterday: a finished day has a final number, and this is a
+    // morning habit alongside the weigh-in.
+    const today = arg.endsWith('today')
+    const date = today ? localDate() : addDays(localDate(), -1)
+    const digits = arg.replace(/today|yesterday/g, '').replace(/[\s,._]/g, '')
+    const steps = /^\d+k$/.test(digits) ? Number(digits.slice(0, -1)) * 1000 : Number(digits)
+
+    if (!Number.isInteger(steps) || steps < 0 || steps > 200_000) {
+      return ctx.reply('usage: /steps 12000 — yesterday by default, or /steps 12000 today')
+    }
+    setSteps(date, steps)
+    return ctx.reply(`${n(steps)} steps · ${date}${today ? '' : ' (yesterday)'}`)
   })
 
   bot.command('activity', (ctx) => {

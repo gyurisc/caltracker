@@ -96,6 +96,25 @@ describe('telegram logging', () => {
     expect(sent.at(-1)).toContain('usage:')
   })
 
+  it('/steps records yesterday by default', async () => {
+    await bot.handleUpdate(update(OWNER, '/steps 12,450') as never)
+    expect(sent.at(-1)).toContain('12,450 steps')
+    expect(sent.at(-1)).toContain('(yesterday)')
+
+    const row = db.prepare('SELECT date, steps FROM days WHERE steps IS NOT NULL').get() as
+      { date: string; steps: number }
+    expect(row.steps).toBe(12_450)
+  })
+
+  it('/steps takes today when asked, and refuses nonsense', async () => {
+    await bot.handleUpdate(update(OWNER, '/steps 8k today') as never)
+    expect(sent.at(-1)).toContain('8,000 steps')
+    expect(sent.at(-1)).not.toContain('yesterday')
+
+    await bot.handleUpdate(update(OWNER, '/steps lots') as never)
+    expect(sent.at(-1)).toContain('usage:')
+  })
+
   it('/weight 74.2 stores the weigh-in', async () => {
     await bot.handleUpdate(update(OWNER, '/weight 74.2') as never)
     const day = db.prepare('SELECT weight_kg FROM days ORDER BY date DESC LIMIT 1').get() as { weight_kg: number }
