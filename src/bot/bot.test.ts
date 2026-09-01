@@ -142,6 +142,21 @@ describe('telegram logging', () => {
     expect(foods().at(-1)!.kcal).toBe(76)
   })
 
+  it('/food echoes the serving and aliases it stored', async () => {
+    await bot.handleUpdate(
+      update(OWNER, '/food zabtej per100g p0.8 c5.6 f1.8 g250 +oat milk, oatmilk') as never,
+    )
+    const reply = sent.at(-1)!
+    expect(reply).toContain('added zabtej')
+    expect(reply).toContain('serving 250 g')
+    expect(reply).toContain('also: oat milk, oatmilk')
+    // The old reply said "try: zabtej 100g" after setting a 250 g serving.
+    expect(reply).not.toContain('100g')
+
+    await bot.handleUpdate(update(OWNER, 'oat milk 200ml') as never)
+    expect(sent.at(-1)).toContain('+ zabtej')
+  })
+
   it('/food refuses an alias that belongs to another food', async () => {
     await bot.handleUpdate(update(OWNER, '/food fake per100 p1 c1 f1 +rice') as never)
     expect(sent.at(-1)).toContain('already belongs to rice')

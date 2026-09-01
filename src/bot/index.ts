@@ -70,14 +70,23 @@ export function createBot(): Bot {
     const m = entry.raw!
     const kcal = deriveKcal(m.proteinG, m.carbsG, m.fatG)
     const per = entry.basis === 'each' ? `each ${entry.unitGrams} g` : 'per 100 g'
+    // Echo what was actually stored. A /food line replaces the whole row, so the
+    // serving and the aliases are exactly what you cannot otherwise verify.
+    const serving = entry.basis === 'each'
+      ? `1 = ${entry.unitGrams} g`
+      : `serving ${entry.defaultGrams ?? 100} g${entry.defaultGrams ? '' : ' (default)'}`
+    const also = entry.aliases.filter((a) => a !== entry.key)
+
     return ctx.reply(
       [
         `${known ? 'updated' : 'added'} ${entry.key} · ${per}`,
         `${n(kcal)} kcal · ${m.proteinG} g P · ${m.carbsG} g C · ${m.fatG} g F`,
+        `${serving} · ${entry.defaultState}`,
+        `also: ${also.length ? also.join(', ') : 'no other names'}`,
         entry.provenance === 'measured' ? 'measured — no ~' : 'estimate — shows ~',
         ...(nearby.length ? ['', `note: very close to "${nearby[0]}" — a typo? /foods to check`] : []),
         '',
-        `try: ${entry.key}${entry.basis === 'per100g' ? ' 100g' : ''}`,
+        `try: ${entry.key}${entry.basis === 'per100g' && !entry.defaultGrams ? ' 100g' : ''}`,
       ].join('\n'),
     )
   })

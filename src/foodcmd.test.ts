@@ -27,6 +27,14 @@ describe('/food', () => {
     expect(e.unitGrams).toBe(85)
   })
 
+  it('accepts the ways you would naturally write per 100 g', () => {
+    for (const basis of ['per100', 'per100g', 'per-100g', '100g']) {
+      const e = ok(`kefir ${basis} p3.3 c4 f1`)
+      expect(e.basis).toBe('per100g')
+      expect(e.key).toBe('kefir')
+    }
+  })
+
   it('keeps a multi-word name together', () => {
     expect(ok('peanut butter per100 p25 c20 f50').key).toBe('peanut butter')
   })
