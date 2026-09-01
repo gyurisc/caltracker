@@ -19,8 +19,17 @@ fi
 # Stop anything already holding the port, or the agent crash-loops on EADDRINUSE.
 bash "$ROOT/scripts/restart.sh" stop || true
 
+# Resolve pnpm here, where the profile is loaded — launchd has no PATH of ours.
+PNPM="$(command -v pnpm || true)"
+if [ -z "$PNPM" ]; then
+  echo "pnpm not found on PATH — run this from a normal shell" >&2
+  exit 1
+fi
+NODEBIN="$(dirname "$PNPM")"
+
 mkdir -p "$HOME/Library/LaunchAgents"
-sed "s|__ROOT__|$ROOT|g" "$ROOT/scripts/com.caltrack.plist" > "$PLIST"
+sed -e "s|__ROOT__|$ROOT|g" -e "s|__PNPM__|$PNPM|g" -e "s|__NODEBIN__|$NODEBIN|g" \
+  "$ROOT/scripts/com.caltrack.plist" > "$PLIST"
 
 launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
 launchctl bootstrap "$DOMAIN" "$PLIST"

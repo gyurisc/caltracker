@@ -5,14 +5,24 @@
   <key>Label</key>
   <string>com.caltrack.server</string>
 
-  <!-- zsh -lc loads the profile, so nvm is on PATH. caffeinate -s keeps the
-       Mac awake, or polling stops when the display sleeps. -->
+  <!-- pnpm by absolute path. `zsh -lc` does NOT source .zshrc, which is where
+       nvm lives, so a bare `pnpm` here fails with exit 127 and KeepAlive turns
+       that into a restart loop. The installer fills both of these in from
+       `which pnpm`, so re-run it after a node upgrade.
+       caffeinate -s keeps the Mac awake, or polling stops when it sleeps. -->
   <key>ProgramArguments</key>
   <array>
-    <string>/bin/zsh</string>
-    <string>-lc</string>
-    <string>exec /usr/bin/caffeinate -s pnpm start</string>
+    <string>/usr/bin/caffeinate</string>
+    <string>-s</string>
+    <string>__PNPM__</string>
+    <string>start</string>
   </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__NODEBIN__:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
 
   <key>WorkingDirectory</key>
   <string>__ROOT__</string>
