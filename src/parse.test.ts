@@ -44,14 +44,14 @@ describe('counts', () => {
   })
 
   it('does not read a weight as a count', () => {
-    const [r] = items('rice 200g')
+    const [r] = items('rice 200g cooked')
     expect(r!.grams).toBe(200)
   })
 })
 
 describe('multiple items', () => {
   it('splits a comma list and an "and"', () => {
-    const parsed = items('black coffee, 2 eggs and rice 150g')
+    const parsed = items('black coffee, 2 eggs and rice 150g cooked')
     expect(parsed.map((i) => i.name)).toEqual(['black coffee', 'eggs', 'rice'])
   })
 
@@ -64,14 +64,14 @@ describe('multiple items', () => {
 
 describe('never drops food silently', () => {
   it('logs both foods when a chunk has no punctuation', () => {
-    const parsed = items('2 eggs rice 200g')
+    const parsed = items('2 eggs rice 200g cooked')
     expect(parsed.map((i) => i.name)).toEqual(['eggs', 'rice'])
     expect(parsed[0]!.grams).toBe(100)
     expect(parsed[1]!.grams).toBe(200)
   })
 
   it('attaches a leading count to the food that follows it, not the one before', () => {
-    const parsed = items('rice 200g 2 eggs')
+    const parsed = items('rice 200g cooked 2 eggs')
     expect(parsed.map((i) => [i.name, i.grams])).toEqual([['rice', 200], ['eggs', 100]])
   })
 
@@ -82,7 +82,7 @@ describe('never drops food silently', () => {
   })
 
   it('handles three foods run together', () => {
-    const parsed = items('chicken 200g cooked rice 250g olive oil 14g')
+    const parsed = items('chicken 200g cooked rice 250g cooked olive oil 14g')
     expect(parsed.map((i) => i.name)).toEqual(['chicken', 'rice', 'olive oil'])
   })
 
@@ -104,7 +104,7 @@ describe('everyday phrasing', () => {
 
   it('reads named portions, per food where they differ', () => {
     expect(items('1 tbsp olive oil')[0]!.grams).toBe(14)
-    expect(items('a bowl of rice')[0]!.grams).toBe(200)
+    expect(items('a bowl of cooked rice')[0]!.grams).toBe(200)
     expect(items('a glass of milk')[0]!.grams).toBe(250)
     expect(items('2 slices dark chocolate')[0]!.grams).toBe(20)
     expect(items('2 scoops whey')[0]!.proteinG).toBeCloseTo(48, 0)
@@ -116,12 +116,12 @@ describe('everyday phrasing', () => {
   })
 
   it('keeps a portion phrase attached to the food it precedes', () => {
-    const parsed = items('rice 200g half an avocado')
+    const parsed = items('rice 200g cooked half an avocado')
     expect(parsed.map((i) => [i.name, i.grams])).toEqual([['rice', 200], ['avocado', 100]])
   })
 
   it('lets an explicit weight beat a portion word', () => {
-    expect(items('a bowl of rice 150g')[0]!.grams).toBe(150)
+    expect(items('a bowl of rice 150g cooked')[0]!.grams).toBe(150)
   })
 })
 
@@ -175,6 +175,41 @@ describe('bareFoodName', () => {
   })
 })
 
+describe('rice needs its state', () => {
+  it('refuses rather than guess, because dry and cooked differ threefold', () => {
+    const r = parseMessage('rice 200g', at('12:00'))
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.needsState).toEqual(['rice'])
+    // Not a vocabulary gap — the food is known.
+    expect(r.unmatched).toEqual([])
+  })
+
+  it('logs either state once it is said, and they are far apart', () => {
+    const dry = items('rice 200g dry')[0]!
+    const cooked = items('rice 200g cooked')[0]!
+    expect(dry.kcal).toBe(709)
+    expect(cooked.kcal).toBe(251)
+    expect(dry.kcal / cooked.kcal).toBeGreaterThan(2.5)
+  })
+
+  it('refuses the whole message, not just the rice', () => {
+    const r = parseMessage('2 eggs and rice 200g', at('12:00'))
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.needsState).toEqual(['rice'])
+  })
+
+  it('takes uncooked and dry as the same thing', () => {
+    expect(items('rice 200g uncooked')[0]!.kcal).toBe(709)
+    expect(items('rice 200g dry')[0]!.kcal).toBe(709)
+  })
+
+  it('leaves foods without the flag alone', () => {
+    expect(items('chicken 200g')[0]!.name).toBe('chicken')
+  })
+})
+
 describe('provenance', () => {
   it('marks table rows as reference, since none has been weighed yet', () => {
     expect(items('black coffee')[0]!.provenance).toBe('reference')
@@ -197,7 +232,7 @@ describe('creatine', () => {
   })
 
   it('does not steal the weight from a food beside it', () => {
-    const parsed = items('creatine and rice 200g')
+    const parsed = items('creatine and rice 200g cooked')
     expect(parsed.map((i) => [i.name, i.grams])).toEqual([['creatine', 5], ['rice', 200]])
   })
 

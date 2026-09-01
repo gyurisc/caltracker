@@ -196,6 +196,18 @@ export function createBot(): Bot {
 
     const result = logText(text)
     if (!result.ok) {
+      if (result.needsState.length > 0) {
+        const food = result.needsState[0]!
+        return ctx.reply(
+          [
+            `${result.needsState.join(', ')}: say dry or cooked.`,
+            'dry and cooked weigh about 3x apart, so I will not guess.',
+            '',
+            `${food} 200g dry`,
+            `${food} 200g cooked`,
+          ].join('\n'),
+        )
+      }
       if (result.unmatched.length === 0) return ctx.reply('nothing to log there.')
       const aliases = vocabTable().entries.flatMap((e) => e.aliases)
       const names = result.unmatched.map(bareFoodName).filter(Boolean).slice(0, 3)

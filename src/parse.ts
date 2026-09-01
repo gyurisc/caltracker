@@ -48,7 +48,8 @@ export type ParsedItem = {
 
 export type ParseResult =
   | { ok: true; items: ParsedItem[] }
-  | { ok: false; unmatched: string[] }
+  /** `needsState` holds foods that matched but did not say raw or cooked. */
+  | { ok: false; unmatched: string[]; needsState: string[] }
 
 /** Never crashes at midnight: hour 0 is breakfast. */
 export function mealTagFromClock(hour: number = localHour()): MealTag {
@@ -109,7 +110,7 @@ function readPortion(chunk: string, entry: FoodEntry): number | null {
 
 function readState(chunk: string): 'raw' | 'cooked' | null {
   if (/\bcooked\b|\bgrilled\b|\bfried\b|\bpan.?fried\b|\bbrowned\b|\bboiled\b|\broasted\b/.test(chunk)) return 'cooked'
-  if (/\braw\b|\buncooked\b/.test(chunk)) return 'raw'
+  if (/\braw\b|\buncooked\b|\bdry\b/.test(chunk)) return 'raw'
   return null
 }
 
@@ -138,7 +139,7 @@ const NOISE_WORDS =
 
 const QUANTITY = /\b\d+(?:\.\d+)?\s*(?:g|gr|gram|grams|kg|ml)?\b/g
 const NUMBER_WORDS = /\b(?:a|an|one|two|three|four|five|six)\b/g
-const STATE_WORDS = /\b(?:cooked|grilled|fried|pan.?fried|browned|boiled|roasted|raw|uncooked)\b/g
+const STATE_WORDS = /\b(?:cooked|grilled|fried|pan.?fried|browned|boiled|roasted|raw|uncooked|dry)\b/g
 const MEAL_WORDS = /\b(?:breakfast|lunch|snack|dinner|supper|brekkie)\b/g
 const FILLER = /\b(?:the|of|some|with|plus|and|my|for)\b/g
 
@@ -259,7 +260,7 @@ export function parseMessage(
   table: FoodTable = SEED_TABLE,
 ): ParseResult {
   const chunks = splitChunks(message)
-  if (chunks.length === 0) return { ok: false, unmatched: [] }
+  if (chunks.length === 0) return { ok: false, unmatched: [], needsState: [] }
 
   const messageMeal = findMealWord(message.toLowerCase())
   const mealTag = messageMeal ?? mealTagFromClock(Number(
@@ -268,6 +269,7 @@ export function parseMessage(
 
   const items: ParsedItem[] = []
   const unmatched: string[] = []
+  const needsState: string[] = []
 
   for (const chunk of chunks) {
     const matches = findMatches(chunk, table)
@@ -281,11 +283,22 @@ export function parseMessage(
     if (matches.length === 0 || leftover.length > 1) { unmatched.push(chunk); continue }
 
     const bounds = matches.map((m, i) => (i === 0 ? 0 : segmentStart(chunk, m.start)))
+    const segments = matches.map((m, i) => chunk.slice(bounds[i]!, bounds[i + 1] ?? chunk.length))
+
+    // Some foods weigh so differently dry and cooked that guessing is worse
+    // than refusing. Ask instead of defaulting.
+    const ambiguous = matches
+      .map((m, i) => (m.entry.stateRequired && readState(segments[i]!) === null ? m.entry.key : null))
+      .filter((k): k is string => k !== null)
+    if (ambiguous.length) { needsState.push(...ambiguous); continue }
+
     matches.forEach((m, i) => {
-      items.push(buildItem(m.entry, chunk.slice(bounds[i]!, bounds[i + 1] ?? chunk.length), mealTag))
+      items.push(buildItem(m.entry, segments[i]!, mealTag))
     })
   }
 
-  if (unmatched.length > 0 || items.length === 0) return { ok: false, unmatched }
+  if (unmatched.length > 0 || needsState.length > 0 || items.length === 0) {
+    return { ok: false, unmatched, needsState }
+  }
   return { ok: true, items }
 }

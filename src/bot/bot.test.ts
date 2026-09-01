@@ -127,6 +127,18 @@ describe('telegram logging', () => {
     expect(foods()).toHaveLength(0)
   })
 
+  it('asks for dry or cooked instead of guessing at rice', async () => {
+    await bot.handleUpdate(update(OWNER, 'rice 200g') as never)
+    expect(sent.at(-1)).toContain('say dry or cooked')
+    expect(sent.at(-1)).not.toContain('not in the local table')
+    expect(foods().some((f) => f.name === 'rice')).toBe(false)
+
+    await bot.handleUpdate(update(OWNER, 'rice 200g cooked') as never)
+    expect(sent.at(-1)).toContain('+ rice')
+    expect(foods().at(-1)!.kcal).toBe(251)
+  })
+
+
   it('suggests the real food behind a typo instead of a template', async () => {
     await bot.handleUpdate(update(OWNER, '/food pepsi zero sugar per100 p0 c0 f0') as never)
     await bot.handleUpdate(update(OWNER, 'Pespi Zero Sugar 250ml') as never)

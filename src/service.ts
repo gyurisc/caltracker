@@ -6,13 +6,17 @@ import { vocabTable } from './vocab.ts'
 
 export type LogOutcome =
   | { ok: true; rows: FoodRow[] }
-  | { ok: false; unmatched: string[] }
+  | { ok: false; unmatched: string[]; needsState: string[] }
 
 export function logText(text: string, opts: { date?: string; time?: string } = {}): LogOutcome {
   const parsed = parseMessage(text, undefined, vocabTable())
   if (!parsed.ok) {
-    logEvent('error', { kind: 'parse_miss', text, unmatched: parsed.unmatched })
-    return { ok: false, unmatched: parsed.unmatched }
+    // A missing state is a question, not a vocabulary gap — keep it out of the
+    // parse_miss backlog, which drives what to add to the table.
+    if (parsed.needsState.length === 0) {
+      logEvent('error', { kind: 'parse_miss', text, unmatched: parsed.unmatched })
+    }
+    return { ok: false, unmatched: parsed.unmatched, needsState: parsed.needsState }
   }
 
   const date = opts.date ?? localDate()

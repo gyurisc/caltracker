@@ -63,6 +63,7 @@ db.exec(`
     default_state TEXT NOT NULL CHECK (default_state IN ('raw','cooked')),
     provenance    TEXT NOT NULL DEFAULT 'reference'
                     CHECK (provenance IN ('measured','reference')),
+    state_required INTEGER NOT NULL DEFAULT 0,
     raw           TEXT,
     cooked        TEXT,
     updated_at    TEXT NOT NULL
@@ -83,6 +84,10 @@ const columns = (table: string) =>
 
 if (!columns('foods').includes('provenance')) {
   db.exec("ALTER TABLE foods ADD COLUMN provenance TEXT NOT NULL DEFAULT 'reference'")
+}
+
+if (!columns('vocab').includes('state_required')) {
+  db.exec('ALTER TABLE vocab ADD COLUMN state_required INTEGER NOT NULL DEFAULT 0')
 }
 
 if (!columns('days').includes('steps')) {
@@ -319,6 +324,7 @@ type VocabRow = {
   key: string; aliases: string; basis: string; unit_grams: number | null
   unit_noun: string | null; default_grams: number | null; portions: string | null
   default_state: string; provenance: string; raw: string | null; cooked: string | null
+  state_required: number
 }
 
 const toEntry = (r: VocabRow): FoodEntry => ({
@@ -331,6 +337,7 @@ const toEntry = (r: VocabRow): FoodEntry => ({
   ...(r.portions == null ? {} : { portions: JSON.parse(r.portions) as Record<string, number> }),
   defaultState: r.default_state as FoodEntry['defaultState'],
   provenance: r.provenance as FoodEntry['provenance'],
+  ...(r.state_required ? { stateRequired: true } : {}),
   ...(r.raw == null ? {} : { raw: JSON.parse(r.raw) as FoodEntry['raw'] }),
   ...(r.cooked == null ? {} : { cooked: JSON.parse(r.cooked) as FoodEntry['cooked'] }),
 })
@@ -341,14 +348,15 @@ export function allVocab(): FoodEntry[] {
 
 const upsertVocabRow = db.prepare(`
   INSERT INTO vocab (key, aliases, basis, unit_grams, unit_noun, default_grams,
-                     portions, default_state, provenance, raw, cooked, updated_at)
+                     portions, default_state, provenance, state_required, raw, cooked, updated_at)
   VALUES (@key, @aliases, @basis, @unit_grams, @unit_noun, @default_grams,
-          @portions, @default_state, @provenance, @raw, @cooked, @updated_at)
+          @portions, @default_state, @provenance, @state_required, @raw, @cooked, @updated_at)
   ON CONFLICT(key) DO UPDATE SET
     aliases = excluded.aliases, basis = excluded.basis, unit_grams = excluded.unit_grams,
     unit_noun = excluded.unit_noun, default_grams = excluded.default_grams,
     portions = excluded.portions, default_state = excluded.default_state,
-    provenance = excluded.provenance, raw = excluded.raw, cooked = excluded.cooked,
+    provenance = excluded.provenance, state_required = excluded.state_required,
+    raw = excluded.raw, cooked = excluded.cooked,
     updated_at = excluded.updated_at
 `)
 
@@ -377,6 +385,7 @@ export function upsertVocab(entry: FoodEntry): void {
     portions: entry.portions ? JSON.stringify(entry.portions) : null,
     default_state: entry.defaultState,
     provenance: entry.provenance ?? 'reference',
+    state_required: entry.stateRequired ? 1 : 0,
     raw: entry.raw ? JSON.stringify(entry.raw) : null,
     cooked: entry.cooked ? JSON.stringify(entry.cooked) : null,
     updated_at: localStamp(),

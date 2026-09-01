@@ -32,6 +32,14 @@ export type FoodEntry = {
    * `measured` means a scale and a label, entered once. Absent reads as reference.
    */
   provenance?: 'measured' | 'reference'
+  /**
+   * Refuse rather than assume when the state is not said. For rice, dry and
+   * cooked differ about threefold by weight, so a silent default turns a
+   * weighed portion into a third of the real calories — the exact silent
+   * undercount whole-message refusal exists to prevent. Only set this where the
+   * difference is large AND the wrong guess reads low.
+   */
+  stateRequired?: boolean
   raw?: Macros
   cooked?: Macros
 }
@@ -77,7 +85,7 @@ export const SEED_FOODS: FoodEntry[] = [
     cooked: { proteinG: 25, carbsG: 0, fatG: 13 } },
 
   { key: 'rice', aliases: ['white rice', 'brown rice', 'rice'],
-    basis: 'per100g', defaultGrams: 200, defaultState: 'cooked',
+    basis: 'per100g', defaultGrams: 200, defaultState: 'cooked', stateRequired: true,
     portions: { bowl: 200, cup: 190, plate: 250 },
     raw: { proteinG: 7.1, carbsG: 80, fatG: 0.7 },
     cooked: { proteinG: 2.7, carbsG: 28, fatG: 0.3 } },
