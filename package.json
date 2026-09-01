@@ -15,6 +15,8 @@
     "serve:restart": "bash scripts/restart.sh",
     "serve:stop": "bash scripts/restart.sh stop",
     "serve:status": "bash scripts/restart.sh status",
+    "serve:install": "bash scripts/install-launchd.sh",
+    "serve:uninstall": "bash scripts/install-launchd.sh uninstall",
     "seed": "tsx src/seed.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

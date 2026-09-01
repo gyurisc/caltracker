@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.caltrack.server</string>
+
+  <!-- zsh -lc loads the profile, so nvm is on PATH. caffeinate -s keeps the
+       Mac awake, or polling stops when the display sleeps. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>exec /usr/bin/caffeinate -s pnpm start</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__ROOT__</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- Restart if it exits for any reason, including a crash. -->
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Wait 10s between restarts, so a port clash cannot become a hot loop. -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>StandardOutPath</key>
+  <string>__ROOT__/data/caltrack.log</string>
+  <key>StandardErrorPath</key>
+  <string>__ROOT__/data/caltrack.log</string>
+</dict>
+</plist>
