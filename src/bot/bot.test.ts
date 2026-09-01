@@ -191,6 +191,35 @@ describe('telegram logging', () => {
     expect(sent.at(-1)).toContain('weigh-ins')
   })
 
+  it('/unfood removes a food and hands back the line to restore it', async () => {
+    await bot.handleUpdate(update(OWNER, '/food ayran per100 p1.7 c2.9 f1.5 g250 +airan') as never)
+    await bot.handleUpdate(update(OWNER, 'ayran 200g') as never)
+    expect(sent.at(-1)).toContain('+ ayran')
+
+    await bot.handleUpdate(update(OWNER, '/unfood ayran') as never)
+    expect(sent.at(-1)).toContain('removed ayran')
+    expect(sent.at(-1)).toContain('1 logged entry keeps its numbers')
+    expect(sent.at(-1)).toContain('/food ayran per100 p1.7 c2.9 f1.5 g250 +airan')
+
+    // Gone from the table, but the entry already written is untouched.
+    await bot.handleUpdate(update(OWNER, 'ayran 200g') as never)
+    expect(sent.at(-1)).toContain('not in the local table')
+    expect(foods().filter((f) => f.name === 'ayran')).toHaveLength(1)
+  })
+
+  it('/unfood finds a food by an alias, and suggests on a typo', async () => {
+    await bot.handleUpdate(update(OWNER, '/food ayran per100 p1.7 c2.9 f1.5 +airan') as never)
+    await bot.handleUpdate(update(OWNER, '/unfood airan') as never)
+    expect(sent.at(-1)).toContain('removed ayran')
+
+    await bot.handleUpdate(update(OWNER, '/unfood ricee') as never)
+    // Nearest first; an earlier test also left a `ricce` row in the table.
+    expect(sent.at(-1)).toContain('did you mean: rice')
+
+    await bot.handleUpdate(update(OWNER, '/unfood') as never)
+    expect(sent.at(-1)).toContain('usage:')
+  })
+
   it('/foods lists the vocabulary', async () => {
     await bot.handleUpdate(update(OWNER, '/foods') as never)
     expect(sent.at(-1)).toContain('black coffee')

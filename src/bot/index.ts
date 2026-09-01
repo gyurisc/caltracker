@@ -1,15 +1,16 @@
 import { Bot } from 'grammy'
 import { addDays, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
 import {
-  deleteFood, getDay, getSettings, mostRecentFood, setActivity, setSteps, setWeight, totalsFor,
+  deleteFood, foodsWithName, getDay, getSettings, mostRecentFood, setActivity, setSteps, setWeight,
+  totalsFor,
 } from '../db.ts'
-import { parseFoodCommand } from '../foodcmd.ts'
+import { formatFoodCommand, parseFoodCommand } from '../foodcmd.ts'
 import { bareFoodName } from '../parse.ts'
 import { nearMatches } from '../similar.ts'
 import { activityLabel, deriveKcal, normalizeActivity, targetKcal } from '../nutrition.ts'
 import { calibrationReport, n, todayLine, todayReport, vocabReport } from '../report.ts'
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
-import { saveFood, vocabTable } from '../vocab.ts'
+import { findFood, removeFood, saveFood, vocabTable } from '../vocab.ts'
 
 export function createBot(): Bot {
   const bot = new Bot(TELEGRAM_BOT_TOKEN)
@@ -30,6 +31,7 @@ export function createBot(): Bot {
         '/today — eaten, target, items',
         '/foods — every food I know',
         '/food kefir per100 p3.3 c4 f1 — teach me a food',
+        '/unfood kefir — forget one',
         '/week — last 7 days',
         '/trend — measured burn rate vs your targets',
         '/weight 74.2 — morning weigh-in',
@@ -88,6 +90,35 @@ export function createBot(): Bot {
         ...(nearby.length ? ['', `note: very close to "${nearby[0]}" — a typo? /foods to check`] : []),
         '',
         `try: ${entry.key}${entry.basis === 'per100g' && !entry.defaultGrams ? ' 100g' : ''}`,
+      ].join('\n'),
+    )
+  })
+
+  bot.command('unfood', (ctx) => {
+    const name = (ctx.match ?? '').toString().trim().toLowerCase()
+    if (!name) return ctx.reply('usage: /unfood <name> — removes a food from the table')
+
+    const entry = findFood(name)
+    if (!entry) {
+      const near = nearMatches(name, vocabTable().entries.flatMap((e) => e.aliases), 2)
+      return ctx.reply(
+        near.length ? `no food called "${name}"\ndid you mean: ${near.join(', ')}?` : `no food called "${name}"`,
+      )
+    }
+
+    // Entries already written keep their own macros, so history is untouched.
+    const logged = foodsWithName(entry.key)
+    removeFood(entry.key)
+
+    return ctx.reply(
+      [
+        `removed ${entry.key}`,
+        logged
+          ? `${logged} logged ${logged === 1 ? 'entry keeps its' : 'entries keep their'} numbers`
+          : 'nothing was logged against it',
+        '',
+        'to put it back:',
+        formatFoodCommand(entry),
       ].join('\n'),
     )
   })

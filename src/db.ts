@@ -266,6 +266,11 @@ export function foodsOn(date: string): FoodRow[] {
 }
 
 /** Most recent row overall, not "last row of today" — so a 00:15 undo reaches the 23:50 meal. */
+/** How many logged entries carry this food's name. */
+export function foodsWithName(name: string): number {
+  return (db.prepare('SELECT COUNT(*) AS n FROM foods WHERE name = ?').get(name) as { n: number }).n
+}
+
 export function mostRecentFood(): FoodRow | undefined {
   return db
     .prepare('SELECT * FROM foods ORDER BY date DESC, time DESC, rowid DESC LIMIT 1')
@@ -356,8 +361,12 @@ export function vocabVersion(): string {
   return (getFlag('vocab_version') as string | undefined) ?? '0'
 }
 
+function bumpVocabVersion(key: string): void {
+  setFlag('vocab_version', localStamp() + ':' + key)
+}
+
 export function upsertVocab(entry: FoodEntry): void {
-  setFlag('vocab_version', localStamp() + ':' + entry.key)
+  bumpVocabVersion(entry.key)
   upsertVocabRow.run({
     key: entry.key,
     aliases: JSON.stringify(entry.aliases),
@@ -372,6 +381,13 @@ export function upsertVocab(entry: FoodEntry): void {
     cooked: entry.cooked ? JSON.stringify(entry.cooked) : null,
     updated_at: localStamp(),
   })
+}
+
+/** Removes a food from the vocabulary. Rows already logged keep their numbers. */
+export function deleteVocab(key: string): boolean {
+  const changes = db.prepare('DELETE FROM vocab WHERE key = ?').run(key).changes
+  if (changes) bumpVocabVersion(key)
+  return changes > 0
 }
 
 /**

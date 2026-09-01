@@ -96,3 +96,26 @@ export function parseFoodCommand(input: string): FoodCommand {
     },
   }
 }
+
+/**
+ * The `/food` line that would recreate an entry — so removing a food hands back
+ * the command to undo it. Round-trips through parseFoodCommand.
+ */
+export function formatFoodCommand(entry: FoodEntry): string {
+  const m = (entry.defaultState === 'cooked' ? entry.cooked : entry.raw) ?? entry.raw ?? entry.cooked!
+  const parts = [
+    '/food',
+    entry.key,
+    entry.basis === 'each' ? `each ${entry.unitGrams}g` : 'per100',
+    `p${m.proteinG}`,
+    `c${m.carbsG}`,
+    `f${m.fatG}`,
+  ]
+  if (entry.basis === 'per100g' && entry.defaultGrams) parts.push(`g${entry.defaultGrams}`)
+  if (entry.defaultState === 'cooked') parts.push('cooked')
+  if ((entry.provenance ?? 'reference') === 'reference') parts.push('est')
+
+  const also = entry.aliases.filter((a) => a !== entry.key)
+  if (also.length) parts.push(`+${also.join(', ')}`)
+  return parts.join(' ')
+}

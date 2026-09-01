@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseFoodCommand } from './foodcmd.ts'
+import { formatFoodCommand, parseFoodCommand } from './foodcmd.ts'
 
 const ok = (s: string) => {
   const r = parseFoodCommand(s)
@@ -64,5 +64,25 @@ describe('/food', () => {
     expect(err('bagel each p9 c48 f1.5')).toContain('weight of one')
     expect(err('kefir')).toContain('usage:')
     expect(err('')).toContain('usage:')
+  })
+})
+
+describe('formatFoodCommand', () => {
+  it('round-trips through the parser', () => {
+    for (const line of [
+      'kefir per100 p3.3 c4 f1',
+      'bagel each 85g p9 c48 f1.5',
+      'skyr per100 p11.5 c4 f0.2 g170 cooked +icelandic skyr, isey',
+      'kefir per100 p3.3 c4 f1 est',
+    ]) {
+      const first = ok(line)
+      const second = ok(formatFoodCommand(first).replace(/^\/food /, ''))
+      expect(second).toEqual(first)
+    }
+  })
+
+  it('produces a command you can paste back', () => {
+    expect(formatFoodCommand(ok('kefir per100 p3.3 c4 f1 g250 +kefyr')))
+      .toBe('/food kefir per100 p3.3 c4 f1 g250 +kefyr')
   })
 })
