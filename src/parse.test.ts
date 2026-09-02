@@ -210,6 +210,29 @@ describe('rice needs its state', () => {
   })
 })
 
+describe('hungarian state words', () => {
+  it('reads sult and fott as cooked, nyers and szaraz as raw', () => {
+    expect(items('chicken 200g sult')[0]!.kcal).toBe(items('chicken 200g cooked')[0]!.kcal)
+    expect(items('rice 200g szaraz')[0]!.kcal).toBe(items('rice 200g dry')[0]!.kcal)
+    expect(items('rice 200g nyers')[0]!.kcal).toBe(709)
+  })
+
+  it('satisfies a food that requires its state', () => {
+    expect(parseMessage('rice 200g sult', at('12:00')).ok).toBe(true)
+  })
+
+  it('strips them as leftovers too, so they never refuse a valid message', () => {
+    // readState() and residual()'s strip list are built from one source; if they
+    // drifted, this would refuse with `sult` left over.
+    const r = parseMessage('chicken 200g sult', at('12:00'))
+    expect(r.ok).toBe(true)
+  })
+
+  it('does not mistake rantotta for the state word rantott', () => {
+    expect(bareFoodName('tojasrantotta 259gram')).toBe('tojasrantotta')
+  })
+})
+
 describe('provenance', () => {
   it('marks table rows as reference, since none has been weighed yet', () => {
     expect(items('black coffee')[0]!.provenance).toBe('reference')

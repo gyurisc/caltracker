@@ -109,8 +109,8 @@ function readPortion(chunk: string, entry: FoodEntry): number | null {
 }
 
 function readState(chunk: string): 'raw' | 'cooked' | null {
-  if (/\bcooked\b|\bgrilled\b|\bfried\b|\bpan.?fried\b|\bbrowned\b|\bboiled\b|\broasted\b/.test(chunk)) return 'cooked'
-  if (/\braw\b|\buncooked\b|\bdry\b/.test(chunk)) return 'raw'
+  if (COOKED_WORDS.test(chunk)) return 'cooked'
+  if (RAW_WORDS.test(chunk)) return 'raw'
   return null
 }
 
@@ -139,7 +139,18 @@ const NOISE_WORDS =
 
 const QUANTITY = /\b\d+(?:\.\d+)?\s*(?:g|gr|gram|grams|kg|ml)?\b/g
 const NUMBER_WORDS = /\b(?:a|an|one|two|three|four|five|six)\b/g
-const STATE_WORDS = /\b(?:cooked|grilled|fried|pan.?fried|browned|boiled|roasted|raw|uncooked|dry)\b/g
+/**
+ * State words in both languages. `readState()` and the `STATE_WORDS` strip list
+ * are built from the same source, so a word can never be understood by one and
+ * left as a leftover by the other.
+ */
+const COOKED = ['cooked', 'grilled', 'fried', 'pan.?fried', 'browned', 'boiled', 'roasted',
+  'sult', 'sült', 'sutve', 'sütve', 'fott', 'főtt', 'parolt', 'párolt', 'grillezett']
+const RAW = ['raw', 'uncooked', 'dry', 'nyers', 'szaraz', 'száraz']
+
+const COOKED_WORDS = new RegExp(`\\b(?:${COOKED.join('|')})\\b`)
+const RAW_WORDS = new RegExp(`\\b(?:${RAW.join('|')})\\b`)
+const STATE_WORDS = new RegExp(`\\b(?:${[...COOKED, ...RAW].join('|')})\\b`, 'g')
 const MEAL_WORDS = /\b(?:breakfast|lunch|snack|dinner|supper|brekkie)\b/g
 const FILLER = /\b(?:the|of|some|with|plus|and|my|for)\b/g
 
