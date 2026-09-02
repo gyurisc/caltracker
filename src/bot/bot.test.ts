@@ -60,7 +60,9 @@ beforeAll(async () => {
   db = booted.db
 })
 
-const foods = () => db.prepare('SELECT * FROM foods ORDER BY rowid').all() as { name: string; kcal: number }[]
+const foods = () =>
+  db.prepare('SELECT * FROM foods ORDER BY rowid').all() as
+    { id: string; name: string; kcal: number; time: string }[]
 
 describe('telegram logging', () => {
   it('writes 2 kcal to SQLite for "black coffee"', async () => {
@@ -248,5 +250,45 @@ describe('telegram logging', () => {
     expect(sent.at(-1)).toBe(todayReport())
     expect(sent.at(-1)).toContain('eggs')
     expect(sent.at(-1)).toContain('kcal left')
+  })
+
+  it('/undo takes a name or a time, and reaches past the 6 h window', async () => {
+    await bot.handleUpdate(update(OWNER, 'black coffee') as never)
+    await bot.handleUpdate(update(OWNER, '2 eggs') as never)
+    await bot.handleUpdate(update(OWNER, 'banana') as never)
+    const before = foods().length
+
+    // By name, and NOT the most recent row — banana was logged after the eggs.
+    const eggsBefore = foods().filter((f) => f.name === 'eggs').length
+    await bot.handleUpdate(update(OWNER, '/undo eggs') as never)
+    expect(sent.at(-1)).toContain('− eggs')
+    expect(foods()).toHaveLength(before - 1)
+    expect(foods().filter((f) => f.name === 'eggs')).toHaveLength(eggsBefore - 1)
+    expect(foods().some((f) => f.name === 'banana')).toBe(true)
+
+    // By the time shown in /today.
+    const stamp = foods().at(-1)!.time
+    const count = foods().length
+    await bot.handleUpdate(update(OWNER, `/undo ${stamp}`) as never)
+    expect(sent.at(-1)).toContain(stamp)
+    expect(foods()).toHaveLength(count - 1)
+  })
+
+  it('/undo names the day back when it cannot find the food', async () => {
+    await bot.handleUpdate(update(OWNER, 'banana') as never)
+    await bot.handleUpdate(update(OWNER, '/undo bananna') as never)
+    expect(sent.at(-1)).toContain('no "bananna" in today\'s log')
+    expect(sent.at(-1)).toContain('did you mean: banana?')
+  })
+
+  it('/undo removes the later of two matching entries', async () => {
+    await bot.handleUpdate(update(OWNER, 'black coffee') as never)
+    await bot.handleUpdate(update(OWNER, 'black coffee') as never)
+    const ids = foods().filter((f) => f.name === 'black coffee').map((f) => f.id)
+
+    await bot.handleUpdate(update(OWNER, '/undo coffee') as never)
+    const left = foods().filter((f) => f.name === 'black coffee').map((f) => f.id)
+    expect(left).toContain(ids[0])
+    expect(left).not.toContain(ids.at(-1))
   })
 })

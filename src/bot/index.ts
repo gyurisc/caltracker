@@ -1,8 +1,8 @@
 import { Bot } from 'grammy'
 import { addDays, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
 import {
-  deleteFood, foodsWithName, getDay, getSettings, mostRecentFood, setActivity, setSteps, setWeight,
-  totalsFor,
+  deleteFood, foodsOn, foodsWithName, getDay, getSettings, mostRecentFood, setActivity, setSteps,
+  setWeight, totalsFor,
 } from '../db.ts'
 import { formatFoodCommand, parseFoodCommand } from '../foodcmd.ts'
 import { bareFoodName } from '../parse.ts'
@@ -38,6 +38,7 @@ export function createBot(): Bot {
         '/activity rest|lift|cycle',
         '/steps 12000 — yesterday, from your phone',
         '/undo — remove the most recent item',
+        '/undo milk · /undo 09:17 — remove any of today\'s',
         '/target — maintenance, deficit, goals',
         '',
         'Numbers are estimates, not medical advice.',
@@ -183,11 +184,52 @@ export function createBot(): Bot {
   })
 
   bot.command('undo', (ctx) => {
-    const row = mostRecentFood()
-    if (!row) return ctx.reply('nothing to undo')
-    if (!isWithinUndoWindow(row)) return ctx.reply(`nothing recent to undo (older than ${UNDO_WINDOW_HOURS} h)`)
-    deleteFood(row.id)
-    return ctx.reply(`− ${row.name} · ${n(row.kcal)} kcal · ${todayLine()}`)
+    const arg = (ctx.match ?? '').toString().trim().toLowerCase()
+
+    // Bare /undo keeps the old rule: the most recent row overall, so a 00:15
+    // undo still reaches last night's 23:50 meal, but nothing older than the
+    // window. A targeted undo is explicit, so it may reach anything today.
+    if (!arg) {
+      const row = mostRecentFood()
+      if (!row) return ctx.reply('nothing to undo')
+      if (!isWithinUndoWindow(row)) {
+        return ctx.reply(
+          [
+            `nothing recent to undo (older than ${UNDO_WINDOW_HOURS} h)`,
+            'name it instead: /undo milk · /undo 09:17',
+          ].join('\n'),
+        )
+      }
+      deleteFood(row.id)
+      return ctx.reply(`− ${row.name} · ${n(row.kcal)} kcal · ${todayLine()}`)
+    }
+
+    const today = foodsOn(localDate())
+    if (today.length === 0) return ctx.reply('nothing logged today')
+
+    const byTime = /^\d{1,2}:\d{2}$/.test(arg)
+      ? today.filter((f) => f.time === arg.padStart(5, '0'))
+      : []
+    const byName = byTime.length
+      ? []
+      : today.filter((f) => f.name === arg || f.name.includes(arg))
+
+    // Latest match wins: two coffees, /undo coffee removes the second.
+    const target = [...byTime, ...byName].at(-1)
+    if (!target) {
+      const near = nearMatches(arg, today.map((f) => f.name), 2)
+      return ctx.reply(
+        [
+          `no "${arg}" in today's log`,
+          ...(near.length ? [`did you mean: ${[...new Set(near)].join(', ')}?`] : []),
+          '',
+          ...today.map((f) => `${f.time}  ${f.name} · ${n(f.kcal)} kcal`),
+        ].join('\n'),
+      )
+    }
+
+    deleteFood(target.id)
+    return ctx.reply(`− ${target.name} ${target.time} · ${n(target.kcal)} kcal · ${todayLine()}`)
   })
 
   bot.on('message:text', (ctx) => {
