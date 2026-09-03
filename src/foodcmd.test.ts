@@ -59,6 +59,19 @@ describe('/food', () => {
     expect(err('mystery per100 p50 c50 f50')).toContain('more than 100 g')
   })
 
+  it('takes a comma as the decimal point, as a Hungarian keyboard types it', () => {
+    const e = ok('chocolate cookie each 20g p1,1 c12 f4,4 est')
+    expect(e.raw).toEqual({ proteinG: 1.1, carbsG: 12, fatG: 4.4 })
+    expect(ok('bagel each 85,5g p9 c48 f1.5').unitGrams).toBe(85.5)
+    // Both notations mean the same thing, in the same command.
+    expect(ok('kefir per100 p3,3 c4 f1')).toEqual(ok('kefir per100 p3.3 c4 f1'))
+  })
+
+  it('says what is missing rather than only reprinting the grammar', () => {
+    expect(err('cookie p1.1 c12 f4.4')).toContain('say per100, or each')
+    expect(err('per100 p1 c1 f1')).toContain('needs a name')
+  })
+
   it('refuses an incomplete row', () => {
     expect(err('kefir per100 p3.3')).toContain('need all three macros')
     expect(err('bagel each p9 c48 f1.5')).toContain('weight of one')

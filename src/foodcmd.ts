@@ -22,9 +22,13 @@ const USAGE = 'usage: /food <name> per100|each <n>g p<protein> c<carbs> f<fat> [
 const PER_100 = new Set(['per100', 'per100g', 'per-100g', 'per_100g', '100g', '/100g', 'per'])
 const EACH = new Set(['each', 'per-unit', 'unit'])
 
+/**
+ * A prefixed number, comma or point. Hungarian keyboards type `p1,1`, and
+ * rejecting it produced a bare usage line that said nothing about the comma.
+ */
 const num = (token: string, prefix: string): number | null => {
-  const m = token.match(new RegExp(`^${prefix}(\\d+(?:\\.\\d+)?)$`))
-  return m ? Number(m[1]) : null
+  const m = token.match(new RegExp(`^${prefix}(\\d+(?:[.,]\\d+)?)$`))
+  return m ? Number(m[1]!.replace(',', '.')) : null
 }
 
 export function parseFoodCommand(input: string): FoodCommand {
@@ -33,7 +37,16 @@ export function parseFoodCommand(input: string): FoodCommand {
 
   // The name is everything before the basis word, so multi-word foods work.
   const basisAt = tokens.findIndex((t) => PER_100.has(t) || EACH.has(t))
-  if (basisAt < 1) return { ok: false, error: USAGE }
+  if (basisAt < 1) {
+    // Naming what is missing beats reprinting the grammar and hoping.
+    const hasMacros = tokens.some((t) => /^[pcf]\d/.test(t))
+    const why = basisAt === 0
+      ? 'the food needs a name before per100 or each'
+      : hasMacros
+        ? 'say per100, or each <n>g for something countable'
+        : null
+    return { ok: false, error: why ? `${why}\n${USAGE}` : USAGE }
+  }
 
   const key = tokens.slice(0, basisAt).join(' ')
   const basis = EACH.has(tokens[basisAt]!) ? 'each' : 'per100g'
@@ -56,8 +69,11 @@ export function parseFoodCommand(input: string): FoodCommand {
     if (token === 'raw' || token === 'cooked') { defaultState = token; continue }
     if (token === 'est' || token === '~') { provenance = 'reference'; continue }
 
-    const unit = token.match(/^(\d+(?:\.\d+)?)g$/)
-    if (unit && basis === 'each' && unitGrams === null) { unitGrams = Number(unit[1]); continue }
+    const unit = token.match(/^(\d+(?:[.,]\d+)?)g$/)
+    if (unit && basis === 'each' && unitGrams === null) {
+      unitGrams = Number(unit[1]!.replace(',', '.'))
+      continue
+    }
 
     const p = num(token, 'p'); if (p !== null) { proteinG = p; continue }
     const c = num(token, 'c'); if (c !== null) { carbsG = c; continue }
