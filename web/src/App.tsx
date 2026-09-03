@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getState, type Activity, type State, type TrendDay, type WeekDay } from './api.ts'
+import { getState, type Activity, type State, type TrendDay } from './api.ts'
+import { CalorieChart, MacroChart, ProteinChart } from './charts.tsx'
 
 const n = (v: number) => Math.round(v).toLocaleString('en-US')
 const dayName = (d: string) => ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'][new Date(`${d}T12:00:00Z`).getUTCDay()]
@@ -34,8 +35,9 @@ export default function App() {
         </span>
       </header>
 
-      <WeekCalories week={state.week} />
-      <WeekProtein week={state.week} goal={settings.proteinGoal} />
+      <CalorieChart days={state.trend} />
+      <ProteinChart days={state.trend} goal={settings.proteinGoal} />
+      <MacroChart days={state.trend} />
       <Today state={state} />
       <WeightTrend trend={state.trend} goal={settings.proteinGoal} />
       <Targets state={state} />
@@ -45,67 +47,6 @@ export default function App() {
         eaten {n(totals.kcal)} · {totals.items} items · ~ never weighed · not medical advice
       </p>
     </div>
-  )
-}
-
-/** Shared scale across all seven columns, so the bars are comparable to each other. */
-function scaleOf(values: number[]): number {
-  return Math.max(1, ...values)
-}
-
-function WeekCalories({ week }: { week: WeekDay[] }) {
-  const max = scaleOf(week.flatMap((d) => [d.kcal, d.maintenance]))
-  return (
-    <section className="panel">
-      <h2>Week · calories</h2>
-      <div className="cols">
-        {week.map((d) => {
-          const over = d.kcal > d.targetKcal
-          const tone = d.kcal === 0 ? 'empty' : over ? 'over' : 'ok'
-          return (
-            <div className="col" key={d.date}>
-              <div className="track">
-                <div className="shade" style={{ height: `${(d.maintenance / max) * 100}%` }} />
-                <div className={`fill ${tone}`} style={{ height: `${(d.kcal / max) * 100}%` }} />
-                <div className="mark" style={{ bottom: `${(d.targetKcal / max) * 100}%` }} />
-              </div>
-              <div className="colcap">
-                <b>{dayName(d.date)}</b>
-                {d.kcal ? n(d.kcal) : '·'}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-      <p className="caption">bar is eaten · shaded is maintenance · line is target</p>
-    </section>
-  )
-}
-
-function WeekProtein({ week, goal }: { week: WeekDay[]; goal: number }) {
-  const max = scaleOf([...week.map((d) => d.proteinG), goal * 1.15])
-  return (
-    <section className="panel">
-      <h2>Week · protein</h2>
-      <div className="cols">
-        {week.map((d) => (
-          <div className="col" key={d.date}>
-            <div className="track">
-              <div
-                className={`fill protein ${d.proteinG >= goal ? 'hit' : ''}`}
-                style={{ height: `${(d.proteinG / max) * 100}%` }}
-              />
-              <div className="mark" style={{ bottom: `${(goal / max) * 100}%` }} />
-            </div>
-            <div className="colcap">
-              <b>{dayName(d.date)}</b>
-              {d.proteinG ? `${Math.round(d.proteinG)}g` : '·'}
-            </div>
-          </div>
-        ))}
-      </div>
-      <p className="caption">line is goal</p>
-    </section>
   )
 }
 

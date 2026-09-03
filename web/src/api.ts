@@ -24,7 +24,19 @@ export type WeekDay = {
   items: number
 }
 
-export type TrendDay = { date: string; weightKg: number | null; kcal: number; proteinG: number; targetKcal: number }
+export type TrendDay = {
+  date: string
+  activity: Activity
+  weightKg: number | null
+  steps: number | null
+  kcal: number
+  proteinG: number
+  carbsG: number
+  fatG: number
+  items: number
+  maintenance: number
+  targetKcal: number
+}
 
 export type State = {
   today: {

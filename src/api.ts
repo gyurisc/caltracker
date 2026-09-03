@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { lastDays, localDate } from './config.ts'
 import {
-  deleteFood, foodsOn, getDay, getSettings, getWeights, mostRecentFood,
+  deleteFood, foodsOn, getDay, getSettings, getSteps, getWeights, mostRecentFood,
   saveSettings, setActivity, setWeight, totalsFor, type DayRow,
 } from './db.ts'
 import { activityLabel, normalizeActivity, targetKcal, type Activity } from './nutrition.ts'
@@ -46,16 +46,28 @@ api.get('/state', (c) => {
     }
   })
 
-  const trendDates = lastDays(14, date)
+  // 30 days: enough for a 7-day rolling mean to have something to roll over.
+  const trendDates = lastDays(30, date)
   const weights = getWeights(trendDates)
+  const steps = getSteps(trendDates)
   const trendTotals = totalsFor(trendDates)
-  const trend = trendDates.map((d) => ({
-    date: d,
-    weightKg: weights[d] ?? null,
-    kcal: trendTotals[d]!.kcal,
-    proteinG: trendTotals[d]!.proteinG,
-    targetKcal: targetKcal(getDay(d).activity, settings),
-  }))
+  const trend = trendDates.map((d) => {
+    const dayRow = getDay(d)
+    const t = trendTotals[d]!
+    return {
+      date: d,
+      activity: dayRow.activity,
+      weightKg: weights[d] ?? null,
+      steps: steps[d] ?? null,
+      kcal: t.kcal,
+      proteinG: t.proteinG,
+      carbsG: t.carbsG,
+      fatG: t.fatG,
+      items: t.items,
+      maintenance: settings.maintenance[dayRow.activity],
+      targetKcal: targetKcal(dayRow.activity, settings),
+    }
+  })
 
   return c.json({
     today: dayView(day),
