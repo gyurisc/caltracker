@@ -236,9 +236,27 @@ describe('telegram logging', () => {
 
   it('/foods lists the vocabulary', async () => {
     await bot.handleUpdate(update(OWNER, '/foods') as never)
-    expect(sent.at(-1)).toContain('black coffee')
-    expect(sent.at(-1)).toContain('skyr')
-    expect(sent.at(-1)).toContain('foods')
+    expect(sent.at(-1)).toContain('never weighed')
+    expect(sent.join('\n')).toContain('black coffee')
+    expect(sent.join('\n')).toContain('skyr')
+  })
+
+  it('splits a reply Telegram would reject as too long', async () => {
+    // The real failure: 35 foods with aliases came to 4,174 characters and
+    // Telegram answered 400 "message is too long", so /foods silently did
+    // nothing. Every part must fit under the 4,096 limit.
+    for (let i = 0; i < 60; i++) {
+      await bot.handleUpdate(
+        update(OWNER, `/food filler${i} per100 p1 c1 f1 +filler${i} alpha, filler${i} beta`) as never,
+      )
+    }
+    const before = sent.length
+    await bot.handleUpdate(update(OWNER, '/foods') as never)
+
+    const parts = sent.slice(before)
+    expect(parts.length).toBeGreaterThan(1)
+    for (const part of parts) expect(part.length).toBeLessThan(4096)
+    expect(parts.join('\n')).toContain('filler59')
   })
 
   // /today and `tsx src/today.ts` must stay one renderer, or the CLI drifts from the bot.

@@ -12,6 +12,28 @@ import { calibrationReport, n, todayLine, todayReport, vocabReport } from '../re
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
 import { findFood, removeFood, saveFood, vocabTable } from '../vocab.ts'
 
+/** Telegram rejects anything over 4096 characters, so long reports go in parts. */
+const TELEGRAM_LIMIT = 3900
+
+function chunk(text: string): string[] {
+  if (text.length <= TELEGRAM_LIMIT) return [text]
+  const parts: string[] = []
+  let current = ''
+  for (const line of text.split('\n')) {
+    if (current && current.length + line.length + 1 > TELEGRAM_LIMIT) {
+      parts.push(current)
+      current = ''
+    }
+    current = current ? `${current}\n${line}` : line
+  }
+  if (current) parts.push(current)
+  return parts
+}
+
+async function replyLong(ctx: { reply: (t: string) => Promise<unknown> }, text: string): Promise<void> {
+  for (const part of chunk(text)) await ctx.reply(part)
+}
+
 export function createBot(): Bot {
   const bot = new Bot(TELEGRAM_BOT_TOKEN)
 
@@ -47,11 +69,11 @@ export function createBot(): Bot {
     ),
   )
 
-  bot.command('today', (ctx) => ctx.reply(todayReport()))
+  bot.command('today', (ctx) => replyLong(ctx, todayReport()))
 
-  bot.command('foods', (ctx) => ctx.reply(vocabReport()))
+  bot.command('foods', (ctx) => replyLong(ctx, vocabReport()))
 
-  bot.command('trend', (ctx) => ctx.reply(calibrationReport()))
+  bot.command('trend', (ctx) => replyLong(ctx, calibrationReport()))
 
   bot.command('food', (ctx) => {
     const result = parseFoodCommand((ctx.match ?? '').toString())
