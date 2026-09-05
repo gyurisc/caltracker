@@ -233,6 +233,34 @@ describe('hungarian state words', () => {
   })
 })
 
+describe('how people actually type', () => {
+  it('takes a count after the food, not only before it', () => {
+    expect(items('2 eggs')[0]!.grams).toBe(100)
+    expect(items('eggs 2')[0]!.grams).toBe(100)
+  })
+
+  it('reads gramm, gram and gr as grams, and dkg as ten', () => {
+    // Every one of these was refused in a real week of logging.
+    expect(items('banana 151gramm')[0]!.grams).toBe(151)
+    expect(items('chicken 256gram cooked')[0]!.grams).toBe(256)
+    expect(items('chicken 39gr cooked')[0]!.grams).toBe(39)
+    expect(items('chicken 30dkg cooked')[0]!.grams).toBe(300)
+    expect(items('chicken 1kg cooked')[0]!.grams).toBe(1000)
+  })
+
+  it('counts in Hungarian as well as English', () => {
+    // The seed table carries English food names, so this exercises the count
+    // words themselves; Hungarian food aliases are added per database.
+    expect(items('ket eggs')[0]!.grams).toBe(100)
+    expect(items('két eggs')[0]!.grams).toBe(100)
+    expect(items('harom eggs')[0]!.grams).toBe(150)
+  })
+
+  it('still refuses a weight it cannot read', () => {
+    expect(parseMessage('banana 151 stone', at('12:00')).ok).toBe(false)
+  })
+})
+
 describe('provenance', () => {
   it('marks table rows as reference, since none has been weighed yet', () => {
     expect(items('black coffee')[0]!.provenance).toBe('reference')

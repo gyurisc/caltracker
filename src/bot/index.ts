@@ -278,7 +278,18 @@ export function createBot(): Bot {
 
       // A typo one letter from a known food gets a "did you mean", never a
       // template — offering to add `pespi` beside `pepsi` is worse than useless.
-      const suggestions = names.flatMap((name) => nearMatches(name, aliases, 2))
+      // Words are compared too, so `zero cola` reaches `coca cola zero` and
+      // `bodyselect why` reaches `bodyselect rizs`, which whole-string distance
+      // never would.
+      const suggestions = names.flatMap((name) => {
+        const whole = nearMatches(name, aliases, 2)
+        const words = name.split(' ').filter((w) => w.length > 2)
+        const byWord = aliases.filter((alias) => {
+          const parts = alias.split(' ')
+          return words.some((w) => parts.some((p) => p === w || nearMatches(w, [p], 1).length > 0))
+        })
+        return [...whole, ...byWord]
+      })
       if (suggestions.length) {
         return ctx.reply(
           [

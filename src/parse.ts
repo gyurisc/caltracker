@@ -75,21 +75,44 @@ function splitChunks(message: string): string[] {
     .filter(Boolean)
 }
 
+/**
+ * Weight units in both languages, with their multiplier. `dkg` is decagrams,
+ * which is how Hungarian recipes and delis quote weight. One list feeds both
+ * readGrams() and the QUANTITY strip list, so they cannot drift apart.
+ */
+const UNITS: Record<string, number> = {
+  kg: 1000, dkg: 10, deka: 10,
+  g: 1, gr: 1, gram: 1, gramm: 1, grams: 1, grammot: 1, ml: 1,
+}
+// Longest first, or `g` would match the start of `gramm`.
+const UNIT_ALT = Object.keys(UNITS).sort((a, b) => b.length - a.length).join('|')
+
 function readGrams(chunk: string): number | null {
-  const kg = chunk.match(/(\d+(?:\.\d+)?)\s*kg\b/)
-  if (kg) return Number(kg[1]) * 1000
-  const g = chunk.match(/(\d+(?:\.\d+)?)\s*(?:g|gr|gram|grams|ml)\b/)
-  if (g) return Number(g[1])
-  return null
+  const m = chunk.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${UNIT_ALT})\\b`))
+  return m ? Number(m[1]) * UNITS[m[2]!]! : null
 }
 
+const COUNT_WORDS: Record<string, number> = {
+  a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+  egy: 1, ket: 2, 'két': 2, kettő: 2, ketto: 2, harom: 3, 'három': 3,
+  negy: 4, 'négy': 4, ot: 5, 'öt': 5, hat: 6,
+}
+const NUMBER_WORD_RE = new RegExp(`\\b(?:${Object.keys(COUNT_WORDS).join('|')})\\b`, 'g')
+
+/** A bare number that is not a weight: `2 eggs`, never `170g`. */
+const BARE_NUMBER_SRC = String.raw`(\d+(?:\.\d+)?)(?!\s*(?:UNITS)\b)`
+const BARE_NUMBER = new RegExp(BARE_NUMBER_SRC.replace('UNITS', UNIT_ALT))
+
 function readCount(chunk: string): number | null {
-  const words: Record<string, number> = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 }
-  const w = chunk.match(/^\s*(a|an|one|two|three|four|five|six)\b/)
-  if (w) return words[w[1]!]!
-  // A bare leading number that is not a weight: "2 eggs", not "170g".
-  const n = chunk.match(/^\s*(\d+(?:\.\d+)?)(?!\s*(?:g|gr|gram|grams|kg|ml)\b)\s*/)
-  if (n) return Number(n[1])
+  const w = chunk.match(new RegExp(`^\\s*(${Object.keys(COUNT_WORDS).join('|')})\\b`))
+  if (w) return COUNT_WORDS[w[1]!]!
+
+  const leading = chunk.match(new RegExp(`^\\s*${BARE_NUMBER.source}\\s*`))
+  if (leading) return Number(leading[1])
+
+  // Trailing too: `chocolate cookie 2` is how people actually type it.
+  const trailing = chunk.match(new RegExp(`${BARE_NUMBER.source}\\s*$`))
+  if (trailing) return Number(trailing[1])
   return null
 }
 
@@ -137,8 +160,8 @@ const FRACTION_WORDS = /\b(?:half|halve|quarter|third)\b|(?:1\/2|1\/4|3\/4)/g
 const NOISE_WORDS =
   /\b(?:large|small|medium|big|extra|fresh|organic|plain|free.range|scrambled|poached|hard|soft|home.?made|left.?over)\b/g
 
-const QUANTITY = /\b\d+(?:\.\d+)?\s*(?:g|gr|gram|grams|kg|ml)?\b/g
-const NUMBER_WORDS = /\b(?:a|an|one|two|three|four|five|six)\b/g
+const QUANTITY = new RegExp(`\\b\\d+(?:\\.\\d+)?\\s*(?:${UNIT_ALT})?\\b`, 'g')
+const NUMBER_WORDS = NUMBER_WORD_RE
 /**
  * State words in both languages. `readState()` and the `STATE_WORDS` strip list
  * are built from the same source, so a word can never be understood by one and
