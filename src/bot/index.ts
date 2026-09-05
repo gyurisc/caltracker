@@ -51,7 +51,7 @@ export function createBot(): Bot {
         'Send food as text: `black coffee` · `minced meat 170g cooked` · `2 eggs, rice 200g`',
         '',
         '/today — eaten, target, items',
-        '/foods — every food I know',
+        '/foods · /foods cola — what I know, or search it',
         '/food kefir per100 p3.3 c4 f1 — teach me a food',
         '/unfood kefir — forget one',
         '/week — last 7 days',
@@ -71,7 +71,7 @@ export function createBot(): Bot {
 
   bot.command('today', (ctx) => replyLong(ctx, todayReport()))
 
-  bot.command('foods', (ctx) => replyLong(ctx, vocabReport()))
+  bot.command('foods', (ctx) => replyLong(ctx, vocabReport((ctx.match ?? '').toString())))
 
   bot.command('trend', (ctx) => replyLong(ctx, calibrationReport()))
 

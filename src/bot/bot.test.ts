@@ -241,6 +241,21 @@ describe('telegram logging', () => {
     expect(sent.join('\n')).toContain('skyr')
   })
 
+  it('/foods <search> filters, and suggests when nothing matches', async () => {
+    await bot.handleUpdate(update(OWNER, '/foods rice') as never)
+    expect(sent.at(-1)).toContain('rice')
+    expect(sent.at(-1)).toContain('matching "rice"')
+    expect(sent.at(-1)).not.toContain('black coffee')
+
+    await bot.handleUpdate(update(OWNER, '/foods riice') as never)
+    expect(sent.at(-1)).toContain('nothing matching')
+    expect(sent.at(-1)).toContain('did you mean')
+
+    await bot.handleUpdate(update(OWNER, '/foods qqzz') as never)
+    expect(sent.at(-1)).toContain('nothing matching')
+    expect(sent.at(-1)).not.toContain('did you mean')
+  })
+
   it('splits a reply Telegram would reject as too long', async () => {
     // The real failure: 35 foods with aliases came to 4,174 characters and
     // Telegram answered 400 "message is too long", so /foods silently did

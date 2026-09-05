@@ -2,6 +2,7 @@ import { lastDays, localDate } from './config.ts'
 import { calibrate, TARGET_RATE_HI, TARGET_RATE_LO, type DayPoint } from './calibrate.ts'
 import { foodsOn, getDay, getSettings, getSteps, getWeights, recentMisses, totalsFor } from './db.ts'
 import { provenanceOf } from './foods.ts'
+import { nearMatches } from './similar.ts'
 import { vocabTable } from './vocab.ts'
 import { activityLabel, deriveKcal, targetKcal } from './nutrition.ts'
 
@@ -60,9 +61,34 @@ export function missesReport(days = 30): string {
   ].join('\n')
 }
 
-/** Everything the parser knows, with the rate each food is logged at. */
-export function vocabReport(): string {
-  const entries = [...vocabTable().entries].sort((a, b) => a.key.localeCompare(b.key))
+/**
+ * Everything the parser knows, with the rate each food is logged at. A query
+ * filters on the key and every alias, so `cola` finds `coca cola zero`.
+ */
+export function vocabReport(query = ''): string {
+  const needle = query.trim().toLowerCase()
+  const all = [...vocabTable().entries].sort((a, b) => a.key.localeCompare(b.key))
+  const entries = needle
+    ? all.filter((e) => [e.key, ...e.aliases].some((name) => name.toLowerCase().includes(needle)))
+    : all
+
+  if (entries.length === 0) {
+    // Compare against single words too: `kola` is far from `coca cola zero`
+    // as a whole, but one edit from the word inside it.
+    const aliases = all.flatMap((e) => e.aliases)
+    const words = [...new Set(aliases.flatMap((a) => a.split(' ')))]
+    const hitWords = new Set(nearMatches(needle, words, 5))
+    const near = [
+      ...nearMatches(needle, aliases, 3),
+      ...aliases.filter((a) => a.split(' ').some((w) => hitWords.has(w))),
+    ]
+    return [
+      `nothing matching "${query.trim()}"`,
+      ...(near.length ? [`did you mean: ${[...new Set(near)].join(', ')}?`] : []),
+      `${all.length} foods in total · /foods with no search lists them`,
+    ].join('\n')
+  }
+
   const width = Math.max(...entries.map((e) => e.key.length))
 
   const lines = entries.map((e) => {
@@ -79,7 +105,7 @@ export function vocabReport(): string {
   })
 
   return [
-    `${entries.length} foods`,
+    needle ? `${entries.length} of ${all.length} foods matching "${query.trim()}"` : `${entries.length} foods`,
     ...lines,
     '',
     '~ never weighed · anything else is refused, not guessed',
