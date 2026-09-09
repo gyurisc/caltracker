@@ -128,7 +128,7 @@ export function calibrationReport(windowDays = 28): string {
 
   const c = calibrate(days)
   const s = getSettings()
-  const head = `last ${windowDays} days · ${c.loggedDays} logged · ${c.weighIns} weigh-ins`
+  const head = `last ${windowDays} days · ${c.loggedDays} logged · ${c.weighIns} weigh-ins over ${c.weighSpan} days`
 
   // Steps explain a trend, they never feed the target — the weight trend is the
   // calibration mechanism, and a second activity estimate would muddy it.
@@ -141,6 +141,7 @@ export function calibrationReport(windowDays = 28): string {
     const needs = [
       c.loggedDays < 10 ? `${10 - c.loggedDays} more logged days` : null,
       c.weighIns < 4 ? `${4 - c.weighIns} more weigh-ins` : null,
+      c.weighSpan < 14 ? `${14 - c.weighSpan} more days between first and last weigh-in` : null,
     ].filter(Boolean)
     return [
       head,

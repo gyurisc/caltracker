@@ -25,6 +25,12 @@ export const PLAUSIBLE_RATE_PCT = 0.02
 /** Below this there is not enough signal to say anything honest. */
 export const MIN_LOGGED_DAYS = 10
 export const MIN_WEIGH_INS = 4
+/**
+ * Calendar days from the first weigh-in to the last — NOT the window length,
+ * which is a constant and made this guard a no-op. A fortnight is the minimum
+ * that outlives the first week's water and glycogen drop; below it the fitted
+ * rate is mostly the whoosh, and the burn rate it implies is nonsense.
+ */
 export const MIN_SPAN_DAYS = 14
 
 export type DayPoint = {
@@ -38,6 +44,8 @@ export type Calibration = {
   loggedDays: number
   windowDays: number
   weighIns: number
+  /** Calendar days from the first weigh-in to the last. */
+  weighSpan: number
   /** Mean intake across logged days only — blank days are missing data, not fasts. */
   avgKcal: number | null
   /** Latest trailing 7-day mean weight, which is the number to watch. */
@@ -98,16 +106,18 @@ export function calibrate(days: DayPoint[]): Calibration {
   const ratePctPerWeek =
     rateKgPerWeek == null || !trendWeightKg ? null : rateKgPerWeek / trendWeightKg
 
+  const weighSpan = weights.length ? weights.at(-1)!.x - weights[0]!.x + 1 : 0
   const enough =
     logged.length >= MIN_LOGGED_DAYS &&
     weights.length >= MIN_WEIGH_INS &&
-    days.length >= MIN_SPAN_DAYS
+    weighSpan >= MIN_SPAN_DAYS
 
   if (!enough || avgKcal == null || rateKgPerWeek == null) {
     return {
       loggedDays: logged.length,
       windowDays: days.length,
       weighIns: weights.length,
+      weighSpan,
       avgKcal: avgKcal == null ? null : Math.round(avgKcal),
       trendWeightKg: trendWeightKg == null ? null : Math.round(trendWeightKg * 10) / 10,
       rateKgPerWeek: rateKgPerWeek == null ? null : Math.round(rateKgPerWeek * 100) / 100,
@@ -134,6 +144,7 @@ export function calibrate(days: DayPoint[]): Calibration {
       loggedDays: logged.length,
       windowDays: days.length,
       weighIns: weights.length,
+      weighSpan,
       avgKcal: Math.round(avgKcal),
       trendWeightKg: Math.round(trendWeightKg! * 10) / 10,
       rateKgPerWeek: Math.round(rateKgPerWeek * 100) / 100,
@@ -158,6 +169,7 @@ export function calibrate(days: DayPoint[]): Calibration {
     loggedDays: logged.length,
     windowDays: days.length,
     weighIns: weights.length,
+    weighSpan,
     avgKcal: Math.round(avgKcal),
     trendWeightKg: Math.round(trendWeightKg! * 10) / 10,
     rateKgPerWeek: Math.round(rateKgPerWeek * 100) / 100,

@@ -91,6 +91,23 @@ describe('calibrate', () => {
     expect(c.adjustKcal).toBe(0)
   })
 
+  it('needs the weigh-ins to span a fortnight, not just to exist', () => {
+    // The real bug: the guard compared the window length, which is constant, so
+    // it never fired. Ten days of weighing during the first water drop implied
+    // a burn rate of 3,317 kcal/day.
+    const days = run(28, 1500, 95.4, -1.5).map((d, i) => (i < 18 ? { ...d, weightKg: null } : d))
+    const c = calibrate(days)
+    expect(c.weighSpan).toBe(10)
+    expect(c.verdict).toBe('not-enough-data')
+    expect(c.effectiveTDEE).toBeNull()
+  })
+
+  it('estimates once the weigh-ins span long enough', () => {
+    const days = run(28, 1800, 96, -0.35)
+    expect(calibrate(days).weighSpan).toBe(28)
+    expect(calibrate(days).verdict).toBe('on-track')
+  })
+
   it('needs weigh-ins, not just food, before it will estimate', () => {
     const days = run(28, 1800, 96, -0.35).map((d, i) => ({ ...d, weightKg: i < 3 ? d.weightKg : null }))
     expect(calibrate(days).verdict).toBe('not-enough-data')
