@@ -46,6 +46,28 @@ describe('calibrate', () => {
     expect(c.loggedDays).toBe(6)
   })
 
+  it('drops the first week from the fit, so the whoosh cannot set the slope', () => {
+    // 3 kg of water in week one, then a steady 0.35 kg/week.
+    const days = run(28, 1800, 96, -0.35).map((d, i) =>
+      i < 7 ? { ...d, weightKg: 96 - (3 / 7) * i } : d,
+    )
+    const c = calibrate(days)
+    expect(c.rateKgPerWeek!).toBeCloseTo(-0.35, 1)
+    expect(c.cleanSpan).toBe(21)
+  })
+
+  it('withholds advice while the settled window is short or the rate is still fast', () => {
+    const short = run(28, 1800, 96, -0.35).map((d, i) => (i < 10 ? { ...d, weightKg: null } : d))
+    expect(calibrate(short).cleanSpan).toBeLessThan(14)
+    expect(calibrate(short).verdict).toBe('settling')
+    expect(calibrate(short).adjustKcal).toBe(0)
+
+    // Long enough, but 1.2 kg/week at 96 kg is 1.25%/week — still water.
+    const fast = run(28, 1800, 96, -1.2)
+    expect(calibrate(fast).verdict).toBe('settling')
+    expect(calibrate(fast).adjustKcal).toBe(0)
+  })
+
   it('back-calculates TDEE from intake and the weight trend', () => {
     // 1,800 kcal while losing 0.35 kg/week ≈ 385 kcal/day of deficit.
     const c = calibrate(run(28, 1800, 96, -0.35))
@@ -67,9 +89,15 @@ describe('calibrate', () => {
   })
 
   it('calls a crash too fast and suggests eating more', () => {
-    const c = calibrate(run(28, 1200, 96, -1.2))
+    // 0.8 kg/week at 96 kg is 0.83%/week: past the target band, but slow
+    // enough to be real fat loss rather than the first week's water.
+    const c = calibrate(run(28, 1200, 96, -0.8))
     expect(c.verdict).toBe('too-fast')
     expect(c.adjustKcal).toBeGreaterThan(0)
+  })
+
+  it('treats anything faster than 1%/week as still settling, not as fat loss', () => {
+    expect(calibrate(run(28, 1200, 96, -1.2)).verdict).toBe('settling')
   })
 
   it('ignores unlogged days when averaging intake', () => {

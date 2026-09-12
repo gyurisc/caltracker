@@ -130,6 +130,10 @@ export function getSettings(): Settings {
     proteinGoal: stored.proteinGoal ?? DEFAULT_SETTINGS.proteinGoal,
     deficit: stored.deficit ?? DEFAULT_SETTINGS.deficit,
     maintenance: { ...DEFAULT_SETTINGS.maintenance, ...(stored.maintenance ?? {}) },
+    // Optional profile, only used for the formula estimate before there is a trend.
+    ...(stored.ageYears == null ? {} : { ageYears: stored.ageYears as number }),
+    ...(stored.heightCm == null ? {} : { heightCm: stored.heightCm as number }),
+    ...(stored.sex == null ? {} : { sex: stored.sex as 'male' | 'female' }),
   }
 }
 
@@ -143,6 +147,9 @@ export function saveSettings(patch: Partial<Settings>): Settings {
     putSetting.run('proteinGoal', JSON.stringify(next.proteinGoal))
     putSetting.run('deficit', JSON.stringify(next.deficit))
     putSetting.run('maintenance', JSON.stringify(next.maintenance))
+    for (const k of ['ageYears', 'heightCm', 'sex'] as const) {
+      if (next[k] != null) putSetting.run(k, JSON.stringify(next[k]))
+    }
   })()
   return next
 }

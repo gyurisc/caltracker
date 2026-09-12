@@ -22,9 +22,22 @@ export const TARGET_RATE_HI = 0.005
 export const PLAUSIBLE_TDEE = { lo: 1000, hi: 6000 }
 export const PLAUSIBLE_RATE_PCT = 0.02
 
+/**
+ * The first week of any deficit sheds water and glycogen, not fat. Weigh-ins
+ * inside that window are dropped from the fit — otherwise the whoosh sets the
+ * slope and the implied burn rate comes out hundreds of kcal too high.
+ */
+export const SETTLE_DAYS = 7
+
 /** Below this there is not enough signal to say anything honest. */
 export const MIN_LOGGED_DAYS = 10
 export const MIN_WEIGH_INS = 4
+/** Clean days needed to show a burn estimate at all. */
+export const MIN_CLEAN_SPAN = 7
+/** Clean days needed before the estimate is allowed to advise a change. */
+export const ADVICE_CLEAN_SPAN = 14
+/** Above this weekly rate the trend is still water, whatever the span says. */
+export const SETTLING_RATE_PCT = 0.01
 /**
  * Calendar days from the first weigh-in to the last — NOT the window length,
  * which is a constant and made this guard a no-op. A fortnight is the minimum
@@ -46,6 +59,8 @@ export type Calibration = {
   weighIns: number
   /** Calendar days from the first weigh-in to the last. */
   weighSpan: number
+  /** Calendar days of weigh-ins after the first week's water loss. */
+  cleanSpan: number
   /** Mean intake across logged days only — blank days are missing data, not fasts. */
   avgKcal: number | null
   /** Latest trailing 7-day mean weight, which is the number to watch. */
@@ -58,6 +73,7 @@ export type Calibration = {
   effectiveTDEE: number | null
   verdict:
     | 'not-enough-data'
+    | 'settling'
     | 'implausible'
     | 'on-track'
     | 'too-slow'
@@ -98,10 +114,16 @@ export function calibrate(days: DayPoint[]): Calibration {
     .map((d, i) => (d.weightKg == null ? null : { x: i, y: d.weightKg }))
     .filter((p): p is { x: number; y: number } => p !== null)
 
+  // Fit on the weigh-ins after the settling window, not on all of them.
+  const firstWeighIn = weights.length ? weights[0]!.x : 0
+  const clean = weights.filter((p) => p.x >= firstWeighIn + SETTLE_DAYS)
+  const fit = clean.length >= MIN_WEIGH_INS ? clean : weights
+  const cleanSpan = clean.length ? clean.at(-1)!.x - clean[0]!.x + 1 : 0
+
   const avgKcal = logged.length ? logged.reduce((s, d) => s + d.kcal, 0) / logged.length : null
   const trendWeightKg = trailingMean(days.map((d) => d.weightKg), 7)
 
-  const perDay = slopePerDay(weights)
+  const perDay = slopePerDay(fit)
   const rateKgPerWeek = perDay == null ? null : perDay * 7
   const ratePctPerWeek =
     rateKgPerWeek == null || !trendWeightKg ? null : rateKgPerWeek / trendWeightKg
@@ -110,7 +132,8 @@ export function calibrate(days: DayPoint[]): Calibration {
   const enough =
     logged.length >= MIN_LOGGED_DAYS &&
     weights.length >= MIN_WEIGH_INS &&
-    weighSpan >= MIN_SPAN_DAYS
+    weighSpan >= MIN_SPAN_DAYS &&
+    cleanSpan >= MIN_CLEAN_SPAN
 
   if (!enough || avgKcal == null || rateKgPerWeek == null) {
     return {
@@ -118,6 +141,7 @@ export function calibrate(days: DayPoint[]): Calibration {
       windowDays: days.length,
       weighIns: weights.length,
       weighSpan,
+      cleanSpan,
       avgKcal: avgKcal == null ? null : Math.round(avgKcal),
       trendWeightKg: trendWeightKg == null ? null : Math.round(trendWeightKg * 10) / 10,
       rateKgPerWeek: rateKgPerWeek == null ? null : Math.round(rateKgPerWeek * 100) / 100,
@@ -145,6 +169,7 @@ export function calibrate(days: DayPoint[]): Calibration {
       windowDays: days.length,
       weighIns: weights.length,
       weighSpan,
+      cleanSpan,
       avgKcal: Math.round(avgKcal),
       trendWeightKg: Math.round(trendWeightKg! * 10) / 10,
       rateKgPerWeek: Math.round(rateKgPerWeek * 100) / 100,
@@ -155,21 +180,29 @@ export function calibrate(days: DayPoint[]): Calibration {
     }
   }
 
+  // Numbers are shown, but a calorie change needs a clean fortnight AND a rate
+  // that is not obviously still water. Wrong advice here is worse than none.
+  const settling =
+    cleanSpan < ADVICE_CLEAN_SPAN || Math.abs(ratePctPerWeek ?? 0) > SETTLING_RATE_PCT
+
   let verdict: Calibration['verdict'] = 'on-track'
-  if (lossPct < TARGET_RATE_LO) verdict = 'too-slow'
+  if (settling) verdict = 'settling'
+  else if (lossPct < TARGET_RATE_LO) verdict = 'too-slow'
   else if (lossPct > TARGET_RATE_HI) verdict = 'too-fast'
 
   // Aim at the middle of the band, and move intake by whole hundreds — the
   // measurement is not precise enough to justify pretending otherwise.
   const midRate = (TARGET_RATE_LO + TARGET_RATE_HI) / 2
   const wantKcal = effectiveTDEE - (midRate * trendWeightKg! * KCAL_PER_KG) / 7
-  const adjustKcal = verdict === 'on-track' ? 0 : Math.round((wantKcal - avgKcal) / 50) * 50
+  const adjustKcal =
+    verdict === 'on-track' || verdict === 'settling' ? 0 : Math.round((wantKcal - avgKcal) / 50) * 50
 
   return {
     loggedDays: logged.length,
     windowDays: days.length,
     weighIns: weights.length,
     weighSpan,
+    cleanSpan,
     avgKcal: Math.round(avgKcal),
     trendWeightKg: Math.round(trendWeightKg! * 10) / 10,
     rateKgPerWeek: Math.round(rateKgPerWeek * 100) / 100,

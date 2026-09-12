@@ -7,12 +7,34 @@ export type Settings = {
   proteinGoal: number
   deficit: number
   maintenance: Record<Activity, number>
+  /** For the day-one formula estimate, before there is any weight trend. */
+  ageYears?: number
+  heightCm?: number
+  sex?: 'male' | 'female'
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   proteinGoal: 180,
   deficit: 500,
   maintenance: { rest: 2100, lifting: 2400, cycling: 2300 },
+}
+
+/**
+ * Mifflin-St Jeor resting rate, then a light activity multiplier. A formula, not
+ * a measurement — it exists only to give day one a starting hypothesis and to
+ * say whether a hand-picked maintenance figure is even in the right postcode.
+ * The weight trend replaces it the moment there is enough of one.
+ */
+export function formulaMaintenance(
+  weightKg: number,
+  s: Pick<Settings, 'ageYears' | 'heightCm' | 'sex'>,
+  steps: number | null = null,
+): number | null {
+  if (!s.ageYears || !s.heightCm) return null
+  const base = 10 * weightKg + 6.25 * s.heightCm - 5 * s.ageYears + (s.sex === 'female' ? -161 : 5)
+  // Step count is the one activity input we actually have.
+  const factor = steps == null ? 1.3 : steps < 5000 ? 1.25 : steps < 9000 ? 1.4 : 1.55
+  return Math.round(base * factor)
 }
 
 /** Never let a mis-set maintenance starve the log. */
