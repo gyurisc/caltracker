@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bareFoodName, mealTagFromClock, parseMessage } from './parse.ts'
+import { bareFoodName, buildTable, mealTagFromClock, parseMessage } from './parse.ts'
 
 const at = (hhmm: string) => new Date(`2026-08-30T${hhmm}:00Z`)
 
@@ -258,6 +258,28 @@ describe('how people actually type', () => {
 
   it('still refuses a weight it cannot read', () => {
     expect(parseMessage('banana 151 stone', at('12:00')).ok).toBe(false)
+  })
+})
+
+describe('accented aliases', () => {
+  it('matches an alias that starts with an accent', () => {
+    // JS \b is defined on [A-Za-z0-9_], so `\bétcsoki\b` never matched:
+    // there is no word boundary before `é`. Every accent-initial alias was dead.
+    const table = buildTable([
+      { key: 'etcsoki', aliases: ['étcsoki', 'etcsoki'], basis: 'per100g', defaultGrams: 25,
+        defaultState: 'raw', raw: { proteinG: 5, carbsG: 53, fatG: 31 } },
+    ])
+    expect(parseMessage('étcsoki 25g', at('12:00'), table).ok).toBe(true)
+    expect(parseMessage('etcsoki 25g', at('12:00'), table).ok).toBe(true)
+  })
+
+  it('still requires a whole-word match', () => {
+    const table = buildTable([
+      { key: 'tea', aliases: ['tea'], basis: 'each', unitGrams: 240,
+        defaultState: 'raw', raw: { proteinG: 0, carbsG: 0, fatG: 0 } },
+    ])
+    // `steak` contains `tea`, and must not match it.
+    expect(parseMessage('steak', at('12:00'), table).ok).toBe(false)
   })
 })
 

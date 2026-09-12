@@ -187,7 +187,11 @@ function findMatches(chunk: string, table: FoodTable): Match[] {
   const taken: [number, number][] = []
   const found: Match[] = []
   for (const { alias, entry } of table.aliasIndex) {
-    const re = new RegExp(`\\b${alias.replace(/\s+/g, '\\s+')}\\b`, 'g')
+    // Unicode-aware boundaries. JS `\b` is defined on [A-Za-z0-9_], so an alias
+    // starting or ending with an accent — `étcsoki`, `őszibarack` — could never
+    // match: the boundary before `é` is not a boundary at all.
+    const body = alias.replace(/\s+/g, '\\s+')
+    const re = new RegExp(`(?<![\\p{L}\\p{N}])${body}(?![\\p{L}\\p{N}])`, 'gu')
     let m: RegExpExecArray | null
     while ((m = re.exec(chunk)) !== null) {
       const start = m.index
