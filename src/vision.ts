@@ -75,6 +75,17 @@ A PLATE OR FOOD ITEM:
 If the photo is not food and not a label:
 {"kind":"none"}`
 
+/**
+ * The names already in the log, handed to the model so a plate resolves onto
+ * rows the user has already chosen or measured. Without this it answers with
+ * descriptions — "grilled chicken breast", "vegetable rice" — and every item
+ * looks new even when the table has had it for weeks.
+ */
+function knownFoodsLine(known: string[]): string {
+  if (known.length === 0) return ''
+  return `\n\nThe log already knows these foods. When an item on the plate is one of them, use its name EXACTLY as written here so it can be matched. Only invent a name for something genuinely not on this list:\n${known.join(', ')}`
+}
+
 /** Downscale and re-encode. Neither Telegram nor a browser is trusted to size an image. */
 export async function prepareImage(input: Buffer): Promise<Buffer> {
   if (input.byteLength > MAX_UPLOAD_BYTES) {
@@ -171,6 +182,7 @@ export async function readPhoto(
   image: Buffer,
   caption: string | null = null,
   chat: ChatFn = callXai,
+  known: string[] = [],
 ): Promise<VisionResult> {
   if (!XAI_API_KEY) return { ok: false, error: 'no XAI_API_KEY set — photos need one' }
 
@@ -193,7 +205,7 @@ export async function readPhoto(
       temperature: 0,
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: SYSTEM },
+        { role: 'system', content: SYSTEM + knownFoodsLine(known) },
         { role: 'user', content },
       ],
     })) as { choices?: { message?: { content?: string } }[] }

@@ -8,6 +8,7 @@ import { formatFoodCommand, parseAliasCommand, parseFoodCommand } from '../foodc
 import { bareFoodName } from '../parse.ts'
 import { nearMatches } from '../similar.ts'
 import { activityLabel, deriveKcal, normalizeActivity, targetKcal } from '../nutrition.ts'
+import { round1 } from '../nutrition.ts'
 import { calibrationReport, n, todayLine, todayReport, vocabReport } from '../report.ts'
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
 import { addAlias, findFood, removeFood, saveFood, vocabTable } from '../vocab.ts'
@@ -408,7 +409,8 @@ export function createBot(): Bot {
     const image = await downloadPhoto(ctx)
     if (!image) return ctx.api.editMessageText(note.chat.id, note.message_id, 'could not fetch that photo')
 
-    const result = await readPhoto(image, ctx.message.caption ?? null)
+    const known = vocabTable().entries.map((e) => e.key)
+    const result = await readPhoto(image, ctx.message.caption ?? null, undefined, known)
     if (!result.ok) {
       logEvent('error', { kind: 'vision_fail', error: result.error })
       return ctx.api.editMessageText(note.chat.id, note.message_id, result.error)
@@ -423,7 +425,9 @@ export function createBot(): Bot {
         [
           `label · ${l.name} · ${per}`,
           `${n(l.kcal)} kcal · ${l.proteinG} g P · ${l.carbsG} g C · ${l.fatG} g F`,
-          ...(l.fibreG ? [`fibre ${l.fibreG} g — worth half of it added to carbs`] : []),
+          ...(l.fibreG
+          ? [`fibre ${l.fibreG} g · counting half of it as carbs, which is what makes the energy match`]
+          : []),
           ...(l.kcalDisputed ? ['the printed energy disagrees with the macros; keeping the macros'] : []),
           '',
           'add it to your table?',
@@ -477,6 +481,10 @@ export function createBot(): Bot {
 
     if (action === 'add' && pending.kind === 'label') {
       const l = pending.label
+      // An EU label's carbohydrate excludes fibre, but the fibre still carries
+      // roughly 2 kcal/g. Half of it added to carbs is what makes 4/4/9 land on
+      // the printed energy — 61 g on the rye thins derives 307 against 350.
+      const carbsG = l.carbsG + (l.fibreG ? l.fibreG / 2 : 0)
       saveFood({
         key: l.name,
         aliases: [l.name],
@@ -484,9 +492,17 @@ export function createBot(): Bot {
         ...(l.basis === 'each' && l.unitGrams ? { unitGrams: l.unitGrams } : {}),
         defaultState: 'raw',
         provenance: 'measured',
-        raw: { proteinG: l.proteinG, carbsG: l.carbsG, fatG: l.fatG },
+        raw: { proteinG: l.proteinG, carbsG: round1(carbsG), fatG: l.fatG },
       })
-      await ctx.editMessageText(`added ${l.name} · ${n(l.kcal)} kcal per 100 g\n\ntry: ${l.name} 100g`)
+      const kcal = deriveKcal(l.proteinG, carbsG, l.fatG)
+      await ctx.editMessageText(
+        [
+          `added ${l.name} · ${n(kcal)} kcal per 100 g`,
+          `${l.proteinG} g P · ${round1(carbsG)} g C · ${l.fatG} g F · measured`,
+          '',
+          `try: ${l.name} 100g`,
+        ].join('\n'),
+      )
       return ctx.answerCallbackQuery('added')
     }
 
