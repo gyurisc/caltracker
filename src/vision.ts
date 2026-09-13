@@ -28,6 +28,13 @@ export type VisionItem = {
    * any gram estimate — it replaces a guess with arithmetic on a real weighing.
    */
   count: number | null
+  /**
+   * True when the grams came from the sender or a scale in the photo rather
+   * than from the model's eye. A stated weight outranks everything — including
+   * a unit weight measured earlier, because the thing on the plate today may
+   * not be the size of the thing that was weighed last month.
+   */
+  gramsStated: boolean
   cooked: boolean | null
   proteinG: number
   carbsG: number
@@ -70,7 +77,8 @@ A NUTRITION LABEL (a printed table of values):
 
 A PLATE OR FOOD ITEM:
 {"kind":"meal","items":[{"name":"<short lowercase name>","grams":<g or null>,
- "count":<whole units visible, or null>,"cooked":true|false|null,
+ "count":<whole units visible, or null>,"gramsSource":"stated"|"estimated",
+ "cooked":true|false|null,
  "proteinG":<g>,"carbsG":<g>,"fatG":<g>,"kcal":<kcal>}],
  "note":"<one short sentence about the biggest uncertainty, or null>"}
 - Macros are for the portion shown, not per 100 g.
@@ -79,7 +87,13 @@ A PLATE OR FOOD ITEM:
   grams as well. Leave count null for anything served as a heap or a pour —
   rice, sauce, stew, oil, soup.
 - Split a mixed plate into separate rows: meat, starch, vegetables, sauce, oil.
+- "gramsSource" is "stated" ONLY when the weight is told to you: the sender
+  named it, or a scale in the photo shows it. Anything you judged by eye is
+  "estimated", however confident you are.
 - If a kitchen scale is visible, use the weight it shows.
+- If the sender names a weight, use it exactly, and put it on the item it
+  describes. With several items and one weight, apply it to the item the sender
+  is plainly talking about and leave the others estimated.
 - Prefer cooked weight for plated food.
 - Black coffee is about 2 kcal, tea 0.
 - Be slightly conservative: do not undercount oil or sauce.
@@ -176,6 +190,7 @@ export function interpret(raw: unknown): VisionResult {
         name: String(row.name ?? '').trim().toLowerCase() || 'unnamed',
         grams: maybeNum(row.grams),
         count: count != null && count > 0 && Number.isInteger(count) ? count : null,
+        gramsStated: row.gramsSource === 'stated',
         cooked: typeof row.cooked === 'boolean' ? row.cooked : null,
         proteinG, carbsG, fatG,
         kcal: derived,

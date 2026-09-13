@@ -69,8 +69,11 @@ export function resolveAgainstTable(item: VisionItem): {
   // unit weight that was measured on a kitchen scale. That turns a portion
   // guess into arithmetic — one pancake is 20 g because it was weighed, not
   // because a photo looked like 30.
+  // A weight the user stated, or one a scale in the photo showed, outranks the
+  // unit weighing: today's pancake may not be the size of the one that was
+  // weighed. Only an eyeballed gram figure gets replaced by arithmetic.
   const byCount =
-    food.basis === 'each' && food.unitGrams && item.count != null
+    !item.gramsStated && food.basis === 'each' && food.unitGrams && item.count != null
       ? item.count * food.unitGrams
       : null
 
@@ -469,7 +472,10 @@ export function createBot(): Bot {
         ...resolved.map((r) =>
           `${r.known ? ' ' : '~'} ${r.item.name} ${r.item.grams ?? '?'}g · ` +
           `${r.item.proteinG.toFixed(0)}g P · ${n(r.item.kcal)} kcal` +
-          (r.counted ? `  (${r.item.count} × your weighing)` : r.known ? '' : '  (not in your table)')),
+          (r.counted
+            ? `  (${r.item.count} × your weighing)`
+            : r.item.gramsStated ? '  (weight you gave)'
+            : r.known ? '' : '  (not in your table)')),
         '',
         `${n(kcal)} kcal · ${protein.toFixed(0)} g P`,
         ...(caveat ? [caveat] : []),

@@ -359,7 +359,7 @@ describe('telegram logging', () => {
 
 describe('countable foods resolve by count, not by gram estimate', () => {
   const item = (over: Partial<VisionItem>): VisionItem => ({
-    name: 'x', grams: null, count: null, cooked: null,
+    name: 'x', grams: null, count: null, gramsStated: false, cooked: null,
     proteinG: 0, carbsG: 0, fatG: 0, kcal: 0, kcalDisputed: false, ...over,
   })
 
@@ -392,6 +392,15 @@ describe('countable foods resolve by count, not by gram estimate', () => {
   it('multiplies the weighing when several units are visible', () => {
     const r = resolveAgainstTable(item({ name: 'testpancake', grams: 90, count: 3 }))
     expect(r.item.grams).toBe(60)
+  })
+
+  it('lets a weight the user stated beat the unit weighing', () => {
+    // "45g" in the caption: a bigger pancake than the one that was weighed.
+    const r = resolveAgainstTable(item({
+      name: 'testpancake', grams: 45, count: 1, gramsStated: true,
+    }))
+    expect(r.counted).toBe(false)
+    expect(r.item.grams).toBe(45)
   })
 
   it('falls back to the gram estimate when nothing was counted', () => {
