@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatFoodCommand, parseFoodCommand } from './foodcmd.ts'
+import { formatFoodCommand, parseAliasCommand, parseFoodCommand } from './foodcmd.ts'
 
 const ok = (s: string) => {
   const r = parseFoodCommand(s)
@@ -97,5 +97,39 @@ describe('formatFoodCommand', () => {
   it('produces a command you can paste back', () => {
     expect(formatFoodCommand(ok('kefir per100 p3.3 c4 f1 g250 +kefyr')))
       .toBe('/food kefir per100 p3.3 c4 f1 g250 +kefyr')
+  })
+})
+
+describe('/alias', () => {
+  const ok = (t: string) => {
+    const r = parseAliasCommand(t)
+    if (!r.ok) throw new Error(r.error)
+    return r
+  }
+  const err = (t: string) => {
+    const r = parseAliasCommand(t)
+    if (r.ok) throw new Error('expected a refusal')
+    return r.error
+  }
+
+  it('splits on = so both sides can be several words', () => {
+    expect(ok('rizs = rice')).toMatchObject({ alias: 'rizs', target: 'rice' })
+    expect(ok('feherje rizs = rice protein'))
+      .toMatchObject({ alias: 'feherje rizs', target: 'rice protein' })
+  })
+
+  it('takes an arrow too, and tidies spacing', () => {
+    expect(ok('kave   ->   black coffee')).toMatchObject({ alias: 'kave', target: 'black coffee' })
+  })
+
+  it('refuses an amount dressed up as a name', () => {
+    expect(err('rizs 150g = rice')).toContain('not an amount')
+  })
+
+  it('refuses without both sides', () => {
+    expect(err('rizs rice')).toContain('usage:')
+    expect(err('rizs =')).toContain('usage:')
+    expect(err('')).toContain('usage:')
+    expect(err('rice = rice')).toContain('already that name')
   })
 })

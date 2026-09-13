@@ -4,13 +4,13 @@ import {
   deleteFood, foodsOn, foodsWithName, getDay, getSettings, mostRecentFood, setActivity, setSteps,
   setWeight, totalsFor,
 } from '../db.ts'
-import { formatFoodCommand, parseFoodCommand } from '../foodcmd.ts'
+import { formatFoodCommand, parseAliasCommand, parseFoodCommand } from '../foodcmd.ts'
 import { bareFoodName } from '../parse.ts'
 import { nearMatches } from '../similar.ts'
 import { activityLabel, deriveKcal, normalizeActivity, targetKcal } from '../nutrition.ts'
 import { calibrationReport, n, todayLine, todayReport, vocabReport } from '../report.ts'
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
-import { findFood, removeFood, saveFood, vocabTable } from '../vocab.ts'
+import { addAlias, findFood, removeFood, saveFood, vocabTable } from '../vocab.ts'
 
 /** Telegram rejects anything over 4096 characters, so long reports go in parts. */
 const TELEGRAM_LIMIT = 3900
@@ -54,6 +54,7 @@ export function createBot(): Bot {
         '/foods · /foods cola — what I know, or search it',
         '/food kefir per100 p3.3 c4 f1 — teach me a food',
         '/unfood kefir — forget one',
+        '/alias rizs = rice — another name for a food I know',
         '/week — last 7 days',
         '/trend — measured burn rate vs your targets',
         '/weight 74.2 — morning weigh-in',
@@ -113,6 +114,45 @@ export function createBot(): Bot {
         ...(nearby.length ? ['', `note: very close to "${nearby[0]}" — a typo? /foods to check`] : []),
         '',
         `try: ${entry.key}${entry.basis === 'per100g' && !entry.defaultGrams ? ' 100g' : ''}`,
+      ].join('\n'),
+    )
+  })
+
+  bot.command('alias', (ctx) => {
+    const parsed = parseAliasCommand((ctx.match ?? '').toString())
+    if (!parsed.ok) return ctx.reply(parsed.error)
+    const { alias, target } = parsed
+
+    const food = findFood(target)
+    if (!food) {
+      const near = nearMatches(target, vocabTable().entries.flatMap((e) => e.aliases), 3)
+      return ctx.reply(
+        [
+          `I do not know a food called "${target}"`,
+          ...(near.length ? [`did you mean: ${[...new Set(near)].join(', ')}?`] : []),
+          'the right-hand side has to be a food I already know · /foods lists them',
+        ].join('\n'),
+      )
+    }
+
+    // An alias owned by something else would shadow it, and the longest-alias
+    // rule makes which one wins non-obvious. Refuse rather than guess.
+    const owner = vocabTable().entries.find((e) => e.aliases.some((a) => a === alias))
+    if (owner) {
+      return ctx.reply(
+        owner.key === food.key
+          ? `${food.key} already answers to "${alias}"`
+          : `"${alias}" already belongs to ${owner.key}`,
+      )
+    }
+
+    const next = addAlias(alias, food)
+    return ctx.reply(
+      [
+        `${food.key} now answers to "${alias}"`,
+        `also: ${next.aliases.filter((a) => a !== food.key).join(', ')}`,
+        '',
+        `try: ${alias}${food.basis === 'per100g' ? ' 100g' : ''}`,
       ].join('\n'),
     )
   })

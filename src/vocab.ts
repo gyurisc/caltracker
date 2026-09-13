@@ -49,3 +49,14 @@ export function removeFood(key: string): boolean {
   if (gone) invalidateVocab()
   return gone
 }
+
+/**
+ * Attach another name to a food that already exists. Unlike `/food` this never
+ * replaces the row, so portion tables and the dry/cooked guard survive — the
+ * two things a well-meant `/food` has silently dropped before.
+ */
+export function addAlias(alias: string, target: FoodEntry): FoodEntry {
+  const next = { ...target, aliases: [...new Set([...target.aliases, alias])] }
+  saveFood(next)
+  return next
+}

@@ -62,7 +62,7 @@ beforeAll(async () => {
 
 const foods = () =>
   db.prepare('SELECT * FROM foods ORDER BY rowid').all() as
-    { id: string; name: string; kcal: number; time: string }[]
+    { id: string; name: string; kcal: number; time: string; grams: number | null }[]
 
 describe('telegram logging', () => {
   it('writes 2 kcal to SQLite for "black coffee"', async () => {
@@ -203,6 +203,26 @@ describe('telegram logging', () => {
   it('/trend says what it still needs before it can estimate', async () => {
     await bot.handleUpdate(update(OWNER, '/trend') as never)
     expect(sent.at(-1)).toContain('weigh-ins')
+  })
+
+  it('/alias teaches another name without touching the row', async () => {
+    await bot.handleUpdate(update(OWNER, '/food kefir per100 p3.3 c4 f1 g250') as never)
+    await bot.handleUpdate(update(OWNER, '/alias kefyr = kefir') as never)
+    expect(sent.at(-1)).toContain('kefir now answers to "kefyr"')
+
+    await bot.handleUpdate(update(OWNER, 'kefyr 200g') as never)
+    expect(sent.at(-1)).toContain('+ kefir')
+    // The serving survived, which a /food rewrite would have dropped.
+    await bot.handleUpdate(update(OWNER, 'kefyr') as never)
+    expect(foods().at(-1)!.grams).toBe(250)
+  })
+
+  it('/alias refuses a name another food owns, and an unknown target', async () => {
+    await bot.handleUpdate(update(OWNER, '/alias rice = kefir') as never)
+    expect(sent.at(-1)).toContain('already belongs to rice')
+
+    await bot.handleUpdate(update(OWNER, '/alias foo = nonesuch') as never)
+    expect(sent.at(-1)).toContain('do not know a food called')
   })
 
   it('/unfood removes a food and hands back the line to restore it', async () => {

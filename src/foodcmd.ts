@@ -135,3 +135,30 @@ export function formatFoodCommand(entry: FoodEntry): string {
   if (also.length) parts.push(`+${also.join(', ')}`)
   return parts.join(' ')
 }
+
+export type AliasCommand =
+  | { ok: true; alias: string; target: string }
+  | { ok: false; error: string }
+
+const ALIAS_USAGE = 'usage: /alias <new name> = <food I already know>   ·   e.g. /alias rizs = rice'
+
+/**
+ * `/alias rizs = rice`. Split on `=` rather than guessing where one name ends
+ * and the next begins, because both sides are routinely multiple words:
+ * `/alias feherje rizs = rice protein`.
+ */
+export function parseAliasCommand(input: string): AliasCommand {
+  const text = input.trim().toLowerCase()
+  if (!text) return { ok: false, error: ALIAS_USAGE }
+
+  const parts = text.split(/\s*=\s*|\s+->\s+/)
+  if (parts.length !== 2) return { ok: false, error: ALIAS_USAGE }
+
+  const alias = parts[0]!.trim().replace(/\s+/g, ' ')
+  const target = parts[1]!.trim().replace(/\s+/g, ' ')
+  if (!alias || !target) return { ok: false, error: ALIAS_USAGE }
+  if (alias === target) return { ok: false, error: `"${alias}" is already that name` }
+  if (/\d/.test(alias)) return { ok: false, error: `"${alias}" has a number in it — an alias is a name, not an amount` }
+
+  return { ok: true, alias, target }
+}
