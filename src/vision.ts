@@ -17,6 +17,13 @@ export const MODEL = 'grok-4.5'
 export const MAX_UPLOAD_BYTES = 12 * 1024 * 1024
 export const MAX_PAYLOAD_BYTES = 1_500_000
 export const MAX_EDGE_PX = 1280
+/**
+ * grammY's polling is sequential: one handler at a time. A fetch with no
+ * timeout therefore does not just fail slowly, it stops the bot — every later
+ * message and button tap is pulled from Telegram and then never handled, with
+ * nothing in the log to say why. Every outbound call needs a deadline.
+ */
+export const XAI_TIMEOUT_MS = 90_000
 
 export type VisionItem = {
   name: string
@@ -146,6 +153,7 @@ export const callXai: ChatFn = async (body) => {
       authorization: `Bearer ${XAI_API_KEY}`,
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(XAI_TIMEOUT_MS),
   })
   if (!res.ok) throw new Error(`xAI ${res.status}: ${(await res.text()).slice(0, 200)}`)
   return res.json()

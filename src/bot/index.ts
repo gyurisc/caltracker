@@ -49,7 +49,10 @@ async function downloadPhoto(ctx: {
   if (!sizes?.length) return null
   const file = await ctx.getFile()
   if (!file.file_path) return null
-  const res = await fetch(`https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${file.file_path}`)
+  const res = await fetch(
+    `https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${file.file_path}`,
+    { signal: AbortSignal.timeout(30_000) },
+  )
   if (!res.ok) return null
   return Buffer.from(await res.arrayBuffer())
 }
@@ -206,7 +209,9 @@ export function resolveAgainstTable(item: VisionItem): {
 }
 
 export function createBot(): Bot {
-  const bot = new Bot(TELEGRAM_BOT_TOKEN)
+  // grammY defaults to a 500 s API timeout, and polling is sequential, so one
+  // slow call stalls every later update. 30 s is well past a normal round trip.
+  const bot = new Bot(TELEGRAM_BOT_TOKEN, { client: { timeoutSeconds: 30 } })
 
   // Single allowlisted user (PRD §10). Everyone else is ignored, not answered.
   bot.use(async (ctx, next) => {
@@ -549,11 +554,26 @@ export function createBot(): Bot {
 
   bot.on('message:photo', async (ctx) => {
     const note = await ctx.reply('reading the photo…')
+    try {
+      return await readPhotoInto(ctx, note)
+    } catch (e) {
+      // Whatever went wrong, the placeholder must not be left saying "reading".
+      // A card that never resolves is indistinguishable from a wedged bot.
+      console.error('[bot] photo', e)
+      logEvent('error', { kind: 'vision_fail', error: String((e as Error).message ?? e) })
+      return ctx.api.editMessageText(
+        note.chat.id, note.message_id,
+        `that photo failed: ${(e as Error).message ?? e}`,
+      )
+    }
+  })
+
+  async function readPhotoInto(ctx: Context, note: { chat: { id: number }; message_id: number }) {
     const image = await downloadPhoto(ctx)
     if (!image) return ctx.api.editMessageText(note.chat.id, note.message_id, 'could not fetch that photo')
 
     const known = vocabTable().entries.map((e) => e.key)
-    const result = await readPhoto(image, ctx.message.caption ?? null, undefined, known)
+    const result = await readPhoto(image, ctx.message?.caption ?? null, undefined, known)
     if (!result.ok) {
       logEvent('error', { kind: 'vision_fail', error: result.error })
       return ctx.api.editMessageText(note.chat.id, note.message_id, result.error)
@@ -595,7 +615,7 @@ export function createBot(): Bot {
       note.chat.id, note.message_id, mealCard(resolved, caveat),
       { reply_markup: new InlineKeyboard().text('Log it', `log:${key}`).text('Cancel', `no:${key}`) },
     )
-  })
+  }
 
   bot.on('callback_query:data', async (ctx) => {
     const [action, key] = ctx.callbackQuery.data.split(':')

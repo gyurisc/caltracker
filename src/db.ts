@@ -48,7 +48,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS events (
     id      TEXT PRIMARY KEY,
     ts      TEXT NOT NULL,
-    kind    TEXT NOT NULL CHECK (kind IN ('log','undo','weight','activity','error')),
+    kind    TEXT NOT NULL CHECK (kind IN ('log','undo','weight','activity','error','vision')),
     payload TEXT NOT NULL
   );
 
@@ -92,6 +92,34 @@ if (!columns('vocab').includes('state_required')) {
 
 if (!columns('days').includes('steps')) {
   db.exec('ALTER TABLE days ADD COLUMN steps INTEGER')
+}
+
+/**
+ * A CHECK constraint is not additive — SQLite cannot ALTER one, so widening the
+ * set of event kinds means rebuilding the table. Skipping this is what broke
+ * photo cards for an afternoon: the TypeScript union said `vision` was legal
+ * while the table still refused it, and every meal card threw on the insert.
+ */
+const EVENT_KINDS = ['log', 'undo', 'weight', 'activity', 'error', 'vision'] as const
+const eventsDDL = (db
+  .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='events'")
+  .get() as { sql?: string } | undefined)?.sql ?? ''
+
+if (eventsDDL && !EVENT_KINDS.every((k) => eventsDDL.includes(`'${k}'`))) {
+  const list = EVENT_KINDS.map((k) => `'${k}'`).join(',')
+  db.exec(`
+    BEGIN;
+    CREATE TABLE events_new (
+      id      TEXT PRIMARY KEY,
+      ts      TEXT NOT NULL,
+      kind    TEXT NOT NULL CHECK (kind IN (${list})),
+      payload TEXT NOT NULL
+    );
+    INSERT INTO events_new SELECT id, ts, kind, payload FROM events;
+    DROP TABLE events;
+    ALTER TABLE events_new RENAME TO events;
+    COMMIT;
+  `)
 }
 
 export type DayRow = {
