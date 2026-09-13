@@ -21,6 +21,13 @@ export const MAX_EDGE_PX = 1280
 export type VisionItem = {
   name: string
   grams: number | null
+  /**
+   * How many whole units are visible, when the thing is countable. Counting
+   * objects is something a model does well; judging mass from a photo is not.
+   * For a food the table holds per unit, count × the measured unit weight beats
+   * any gram estimate — it replaces a guess with arithmetic on a real weighing.
+   */
+  count: number | null
   cooked: boolean | null
   proteinG: number
   carbsG: number
@@ -63,9 +70,14 @@ A NUTRITION LABEL (a printed table of values):
 
 A PLATE OR FOOD ITEM:
 {"kind":"meal","items":[{"name":"<short lowercase name>","grams":<g or null>,
- "cooked":true|false|null,"proteinG":<g>,"carbsG":<g>,"fatG":<g>,"kcal":<kcal>}],
+ "count":<whole units visible, or null>,"cooked":true|false|null,
+ "proteinG":<g>,"carbsG":<g>,"fatG":<g>,"kcal":<kcal>}],
  "note":"<one short sentence about the biggest uncertainty, or null>"}
 - Macros are for the portion shown, not per 100 g.
+- Set "count" whenever the item comes in whole pieces you can COUNT: pancakes,
+  eggs, slices, bars, biscuits, rolls. Count what is visible and eaten, and give
+  grams as well. Leave count null for anything served as a heap or a pour —
+  rice, sauce, stew, oil, soup.
 - Split a mixed plate into separate rows: meat, starch, vegetables, sauce, oil.
 - If a kitchen scale is visible, use the weight it shows.
 - Prefer cooked weight for plated food.
@@ -159,9 +171,11 @@ export function interpret(raw: unknown): VisionResult {
       const fatG = num(row.fatG)
       const derived = deriveKcal(proteinG, carbsG, fatG)
       const claimed = maybeNum(row.kcal)
+      const count = maybeNum(row.count)
       return {
         name: String(row.name ?? '').trim().toLowerCase() || 'unnamed',
         grams: maybeNum(row.grams),
+        count: count != null && count > 0 && Number.isInteger(count) ? count : null,
         cooked: typeof row.cooked === 'boolean' ? row.cooked : null,
         proteinG, carbsG, fatG,
         kcal: derived,

@@ -1,5 +1,6 @@
 import { existsSync, rmSync } from 'node:fs'
 import { beforeAll, describe, expect, it } from 'vitest'
+import type { VisionItem } from '../vision.ts'
 
 /**
  * Drives the real bot handler with synthetic updates — no network, no Telegram.
@@ -353,5 +354,62 @@ describe('telegram logging', () => {
     const left = foods().filter((f) => f.name === 'black coffee').map((f) => f.id)
     expect(left).toContain(ids[0])
     expect(left).not.toContain(ids.at(-1))
+  })
+})
+
+describe('countable foods resolve by count, not by gram estimate', () => {
+  const item = (over: Partial<VisionItem>): VisionItem => ({
+    name: 'x', grams: null, count: null, cooked: null,
+    proteinG: 0, carbsG: 0, fatG: 0, kcal: 0, kcalDisputed: false, ...over,
+  })
+
+  let saveFood: typeof import('../vocab.ts').saveFood
+  let resolveAgainstTable: typeof import('./index.ts').resolveAgainstTable
+
+  beforeAll(async () => {
+    ;({ saveFood } = await import('../vocab.ts'))
+    ;({ resolveAgainstTable } = await import('./index.ts'))
+    saveFood({
+      key: 'testpancake', basis: 'each', unitGrams: 20,
+      raw: { proteinG: 1.2, carbsG: 5.5, fatG: 1.9 },
+      defaultState: 'raw', provenance: 'measured', stateRequired: false, aliases: [],
+    })
+    saveFood({
+      key: 'testrice', basis: 'per100g', defaultGrams: 150,
+      raw: { proteinG: 2.7, carbsG: 28, fatG: 0.3 },
+      defaultState: 'raw', provenance: 'reference', stateRequired: false, aliases: [],
+    })
+  })
+
+  it('uses count times the measured unit weight, ignoring the model grams', () => {
+    // The model saw one pancake and guessed 30 g. It was weighed at 20 g.
+    const r = resolveAgainstTable(item({ name: 'testpancake', grams: 30, count: 1 }))
+    expect(r.counted).toBe(true)
+    expect(r.item.grams).toBe(20)
+    expect(r.item.kcal).toBe(44)
+  })
+
+  it('multiplies the weighing when several units are visible', () => {
+    const r = resolveAgainstTable(item({ name: 'testpancake', grams: 90, count: 3 }))
+    expect(r.item.grams).toBe(60)
+  })
+
+  it('falls back to the gram estimate when nothing was counted', () => {
+    const r = resolveAgainstTable(item({ name: 'testpancake', grams: 30, count: null }))
+    expect(r.counted).toBe(false)
+    expect(r.item.grams).toBe(30)
+  })
+
+  it('ignores a count on a food served as a heap', () => {
+    // "1 portion of rice" is not a unit the table holds, so the grams stand.
+    const r = resolveAgainstTable(item({ name: 'testrice', grams: 200, count: 1 }))
+    expect(r.counted).toBe(false)
+    expect(r.item.grams).toBe(200)
+  })
+
+  it('leaves an unknown food alone for the user to name', () => {
+    const r = resolveAgainstTable(item({ name: 'not a food here', grams: 50, count: 2 }))
+    expect(r.known).toBe(false)
+    expect(r.item.grams).toBe(50)
   })
 })

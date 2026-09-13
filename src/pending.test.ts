@@ -3,7 +3,7 @@ import { clear, peek, PENDING_TTL_MS, put, size, take } from './pending.ts'
 import type { VisionItem } from './vision.ts'
 
 const item: VisionItem = {
-  name: 'rice', grams: 200, cooked: true,
+  name: 'rice', grams: 200, count: null, cooked: true,
   proteinG: 5, carbsG: 56, fatG: 0.6, kcal: 250, kcalDisputed: false,
 }
 

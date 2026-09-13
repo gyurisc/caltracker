@@ -57,14 +57,32 @@ async function downloadPhoto(ctx: {
  * A name the table already knows keeps the table's macros — those are chosen or
  * measured, and the model's portion guess is the only part worth borrowing.
  */
-function resolveAgainstTable(item: VisionItem): { item: VisionItem; known: boolean } {
+export function resolveAgainstTable(item: VisionItem): {
+  item: VisionItem
+  known: boolean
+  counted: boolean
+} {
   const food = findFood(item.name)
-  if (!food || item.grams == null) return { item, known: Boolean(food) }
-  const scaled = scaleTo(food, item.grams, item.cooked)
-  if (!scaled) return { item, known: true }
+  if (!food) return { item, known: false, counted: false }
+
+  // A countable food the table holds per unit: take the model's COUNT and the
+  // unit weight that was measured on a kitchen scale. That turns a portion
+  // guess into arithmetic — one pancake is 20 g because it was weighed, not
+  // because a photo looked like 30.
+  const byCount =
+    food.basis === 'each' && food.unitGrams && item.count != null
+      ? item.count * food.unitGrams
+      : null
+
+  const grams = byCount ?? item.grams
+  if (grams == null) return { item, known: true, counted: false }
+
+  const scaled = scaleTo(food, grams, item.cooked)
+  if (!scaled) return { item, known: true, counted: false }
   return {
     known: true,
-    item: { ...item, name: food.key, ...scaled, kcalDisputed: false },
+    counted: byCount != null,
+    item: { ...item, name: food.key, grams, ...scaled, kcalDisputed: false },
   }
 }
 
@@ -451,7 +469,7 @@ export function createBot(): Bot {
         ...resolved.map((r) =>
           `${r.known ? ' ' : '~'} ${r.item.name} ${r.item.grams ?? '?'}g · ` +
           `${r.item.proteinG.toFixed(0)}g P · ${n(r.item.kcal)} kcal` +
-          (r.known ? '' : '  (not in your table)')),
+          (r.counted ? `  (${r.item.count} × your weighing)` : r.known ? '' : '  (not in your table)')),
         '',
         `${n(kcal)} kcal · ${protein.toFixed(0)} g P`,
         ...(caveat ? [caveat] : []),
