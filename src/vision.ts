@@ -43,6 +43,12 @@ export type VisionItem = {
   kcal: number
   /** True when the model's kcal disagreed with 4/4/9 by more than the tolerance. */
   kcalDisputed: boolean
+  /**
+   * The grams this row carried before the user corrected it. Set only by a
+   * correction, and the whole point of the feature: the pair (guessed, actual)
+   * is the only portion ground truth this app can ever collect.
+   */
+  correctedFrom?: number | null
 }
 
 export type VisionLabel = {

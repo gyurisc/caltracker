@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard } from 'grammy'
+import { Bot, type Context, InlineKeyboard } from 'grammy'
 import { addDays, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
 import {
   deleteFood, foodsOn, foodsWithName, getDay, getSettings, mostRecentFood, setActivity, setSteps,
@@ -9,10 +9,11 @@ import { bareFoodName } from '../parse.ts'
 import { nearMatches } from '../similar.ts'
 import { activityLabel, deriveKcal, normalizeActivity, targetKcal } from '../nutrition.ts'
 import { round1 } from '../nutrition.ts'
-import { calibrationReport, n, todayLine, todayReport, vocabReport } from '../report.ts'
+import { calibrationReport, n, todayLine, todayReport, visionReport, vocabReport } from '../report.ts'
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
 import { addAlias, findFood, removeFood, saveFood, vocabTable } from '../vocab.ts'
-import { put as putPending, take as takePending } from '../pending.ts'
+import { latestMeal, put as putPending, replace as replacePending, take as takePending } from '../pending.ts'
+import { parseCorrection, targetIndex } from '../correction.ts'
 import { readPhoto, type VisionItem } from '../vision.ts'
 import { addFoods, logEvent } from '../db.ts'
 import { scaleTo } from '../parse.ts'
@@ -57,6 +58,121 @@ async function downloadPhoto(ctx: {
  * A name the table already knows keeps the table's macros — those are chosen or
  * measured, and the model's portion guess is the only part worth borrowing.
  */
+/**
+ * One renderer for the confirm card, because a correction rewrites the same
+ * message the photo produced. Each line says where its weight came from, so it
+ * is visible at a glance which numbers are measured and which are guessed —
+ * the same job the `~` marker does in the daily log.
+ */
+/**
+ * A weight typed while a photo card is open corrects that card instead of
+ * logging a new meal — but only when it plainly refers to a row already there.
+ * Anything ambiguous falls through to normal logging, because swallowing a real
+ * meal into a card edit would be a silent loss, the failure this app guards
+ * against everywhere else.
+ *
+ * Returns true when the message was consumed as a correction.
+ */
+async function applyCorrection(ctx: Context, text: string): Promise<boolean> {
+  const chatId = ctx.chat?.id
+  if (chatId == null) return false
+
+  const parsed = parseCorrection(text)
+  if (!parsed) return false
+
+  const found = latestMeal(chatId)
+  if (!found || found.pending.kind !== 'meal') return false
+
+  const { items, note: caveat, messageId } = found.pending
+  const idx = targetIndex(parsed, items.map((i) => i.name))
+  if (idx === -1) return false
+
+  const before = items[idx]!
+  const food = findFood(before.name)
+  const scaled = food ? scaleTo(food, parsed.grams, before.cooked) : null
+
+  // Off the table there are no per-gram macros to rescale from, so scale what
+  // the model gave by the ratio of the weights. Crude, but it beats leaving a
+  // corrected weight sitting beside uncorrected macros.
+  const ratio = before.grams && before.grams > 0 ? parsed.grams / before.grams : 1
+  const macros = scaled ?? {
+    proteinG: round1(before.proteinG * ratio),
+    carbsG: round1(before.carbsG * ratio),
+    fatG: round1(before.fatG * ratio),
+    kcal: Math.round(before.kcal * ratio),
+  }
+
+  const after: VisionItem = {
+    ...before, ...macros,
+    grams: parsed.grams,
+    correctedFrom: before.correctedFrom ?? before.grams,
+    kcalDisputed: false,
+  }
+  const next = items.map((i, k) => (k === idx ? after : i))
+  replacePending(found.key, { ...found.pending, items: next })
+
+  logEvent('vision', {
+    action: 'corrected',
+    name: before.name,
+    proposedGrams: after.correctedFrom,
+    actualGrams: parsed.grams,
+    countPath: before.count != null && Boolean(food),
+    matched: Boolean(food),
+  })
+
+  await ctx.api.editMessageText(chatId, messageId, mealCard(next, caveat), {
+    reply_markup: new InlineKeyboard()
+      .text('Log it', `log:${found.key}`)
+      .text('Cancel', `no:${found.key}`),
+  })
+  await ctx.reply(`${before.name} → ${parsed.grams}g. tap Log it when the card is right.`)
+  return true
+}
+
+export function mealCard(items: VisionItem[], caveat: string | null): string {
+  const kcal = items.reduce((s, i) => s + i.kcal, 0)
+  const protein = items.reduce((s, i) => s + i.proteinG, 0)
+  const missing = items.filter((i) => !findFood(i.name))
+
+  return [
+    `photo · ${items.length} item${items.length === 1 ? '' : 's'}`,
+    '',
+    ...items.map((i) => {
+      const known = Boolean(findFood(i.name))
+      return `${known ? ' ' : '~'} ${i.name} ${i.grams ?? '?'}g · ` +
+        `${i.proteinG.toFixed(0)}g P · ${n(i.kcal)} kcal` +
+        (i.correctedFrom != null
+          ? `  (you weighed it; I guessed ${i.correctedFrom}g)`
+          : i.gramsStated ? '  (weight you gave)'
+          : i.count != null && known ? `  (${i.count} × your weighing)`
+          : known ? '' : '  (not in your table)')
+    }),
+    '',
+    `${n(kcal)} kcal · ${protein.toFixed(0)} g P`,
+    ...(caveat ? [caveat] : []),
+    ...(missing.length
+      ? ['', `${missing.length} not in your table — logged as an estimate, add later with /food`]
+      : []),
+    '',
+    items.length === 1
+      ? 'weighed it? send the grams and I will correct this'
+      : 'weighed one? send e.g. `rice 180g` to correct that line',
+  ].join('\n')
+}
+
+/** What the model proposed, beside what the table made of it. */
+function proposalRecord(proposed: VisionItem[], resolved: VisionItem[]) {
+  return proposed.map((p, idx) => ({
+    name: p.name,
+    grams: p.grams,
+    count: p.count,
+    stated: p.gramsStated,
+    resolvedName: resolved[idx]?.name ?? null,
+    resolvedGrams: resolved[idx]?.grams ?? null,
+    matched: Boolean(resolved[idx] && findFood(resolved[idx]!.name)),
+  }))
+}
+
 export function resolveAgainstTable(item: VisionItem): {
   item: VisionItem
   known: boolean
@@ -112,6 +228,7 @@ export function createBot(): Bot {
         '/alias rizs = rice — another name for a food I know',
         '/week — last 7 days',
         '/trend — measured burn rate vs your targets',
+        '/vision — how well photo reading is doing',
         '/weight 74.2 — morning weigh-in',
         '/activity rest|lift|cycle',
         '/steps 12000 — yesterday, from your phone',
@@ -172,6 +289,8 @@ export function createBot(): Bot {
       ].join('\n'),
     )
   })
+
+  bot.command('vision', (ctx) => replyLong(ctx, visionReport()))
 
   bot.command('alias', (ctx) => {
     const parsed = parseAliasCommand((ctx.match ?? '').toString())
@@ -349,9 +468,12 @@ export function createBot(): Bot {
     return ctx.reply(`− ${target.name} ${target.time} · ${n(target.kcal)} kcal · ${todayLine()}`)
   })
 
-  bot.on('message:text', (ctx) => {
+  bot.on('message:text', async (ctx) => {
     const text = ctx.message.text.trim()
     if (text.startsWith('/')) return ctx.reply('unknown command. /help')
+
+    const corrected = await applyCorrection(ctx, text)
+    if (corrected) return
 
     const result = logText(text)
     if (!result.ok) {
@@ -458,31 +580,19 @@ export function createBot(): Bot {
     }
 
     const { items, note: caveat } = result.read
-    const resolved = items.map(resolveAgainstTable)
-    const key = putPending({ kind: 'meal', items: resolved.map((r) => r.item), note: caveat })
-    const kcal = resolved.reduce((s, r) => s + r.item.kcal, 0)
-    const protein = resolved.reduce((s, r) => s + r.item.proteinG, 0)
-    const missing = resolved.filter((r) => !r.known)
+    const resolved = items.map(resolveAgainstTable).map((r) => r.item)
+    const key = putPending({
+      kind: 'meal',
+      items: resolved,
+      note: caveat,
+      chatId: note.chat.id,
+      messageId: note.message_id,
+      proposed: items,
+    })
+    logEvent('vision', { action: 'proposed', items: proposalRecord(items, resolved) })
 
     return ctx.api.editMessageText(
-      note.chat.id, note.message_id,
-      [
-        `photo · ${resolved.length} item${resolved.length === 1 ? '' : 's'}`,
-        '',
-        ...resolved.map((r) =>
-          `${r.known ? ' ' : '~'} ${r.item.name} ${r.item.grams ?? '?'}g · ` +
-          `${r.item.proteinG.toFixed(0)}g P · ${n(r.item.kcal)} kcal` +
-          (r.counted
-            ? `  (${r.item.count} × your weighing)`
-            : r.item.gramsStated ? '  (weight you gave)'
-            : r.known ? '' : '  (not in your table)')),
-        '',
-        `${n(kcal)} kcal · ${protein.toFixed(0)} g P`,
-        ...(caveat ? [caveat] : []),
-        ...(missing.length
-          ? ['', `${missing.length} not in your table — logged as an estimate, add later with /food`]
-          : []),
-      ].join('\n'),
+      note.chat.id, note.message_id, mealCard(resolved, caveat),
       { reply_markup: new InlineKeyboard().text('Log it', `log:${key}`).text('Cancel', `no:${key}`) },
     )
   })
@@ -492,7 +602,13 @@ export function createBot(): Bot {
     if (!key) return ctx.answerCallbackQuery('unknown button')
 
     if (action === 'no') {
-      takePending(key)
+      const dropped = takePending(key)
+      if (dropped?.kind === 'meal') {
+        logEvent('vision', {
+          action: 'rejected',
+          items: dropped.items.map((i) => ({ name: i.name, grams: i.grams })),
+        })
+      }
       await ctx.editMessageText('dropped, nothing logged')
       return ctx.answerCallbackQuery('dropped')
     }
@@ -544,6 +660,15 @@ export function createBot(): Bot {
       })))
       const total = rows.reduce((s, r) => s + r.kcal, 0)
       logEvent('log', { date: localDate(), text: 'photo', ids: rows.map((r) => r.id), kcal: total })
+      logEvent('vision', {
+        action: 'accepted',
+        items: pending.items.map((i) => ({
+          name: i.name,
+          grams: i.grams,
+          proposedGrams: i.correctedFrom ?? i.grams,
+          corrected: i.correctedFrom != null,
+        })),
+      })
       await ctx.editMessageText(
         `+ ${rows.map((r) => r.name).join(', ')} · ${n(total)} kcal · ${todayLine()}`,
       )

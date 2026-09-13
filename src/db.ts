@@ -450,7 +450,62 @@ export function recentMisses(days = 30): Miss[] {
   return [...byPhrase.values()].sort((a, b) => b.count - a.count || b.lastSeen.localeCompare(a.lastSeen))
 }
 
-export function logEvent(kind: 'log' | 'undo' | 'weight' | 'activity' | 'error', payload: unknown): void {
+export function logEvent(
+  kind: 'log' | 'undo' | 'weight' | 'activity' | 'error' | 'vision',
+  payload: unknown,
+): void {
   db.prepare('INSERT INTO events (id, ts, kind, payload) VALUES (?, ?, ?, ?)')
     .run(crypto.randomUUID(), localStamp(), kind, JSON.stringify(payload))
+}
+
+export type VisionCorrection = {
+  ts: string
+  name: string
+  proposedGrams: number | null
+  actualGrams: number
+  countPath: boolean
+  matched: boolean
+}
+
+/**
+ * Every portion the user corrected on a photo card. This is the only portion
+ * ground truth the app collects — a guessed weight beside a weighed one, on
+ * food that was actually eaten. It is what a future calibration would read.
+ */
+export function visionCorrections(days = 90): VisionCorrection[] {
+  const since = lastDays(days)[0]!
+  const rows = db
+    .prepare("SELECT ts, payload FROM events WHERE kind = 'vision' AND ts >= ? ORDER BY ts")
+    .all(since) as { ts: string; payload: string }[]
+
+  const out: VisionCorrection[] = []
+  for (const row of rows) {
+    const p = JSON.parse(row.payload) as Record<string, unknown>
+    if (p.action !== 'corrected') continue
+    if (typeof p.name !== 'string' || typeof p.actualGrams !== 'number') continue
+    out.push({
+      ts: row.ts,
+      name: p.name,
+      proposedGrams: typeof p.proposedGrams === 'number' ? p.proposedGrams : null,
+      actualGrams: p.actualGrams,
+      countPath: p.countPath === true,
+      matched: p.matched === true,
+    })
+  }
+  return out
+}
+
+/** Counts of proposed / accepted / rejected cards, for the funnel. */
+export function visionCounts(days = 90): Record<string, number> {
+  const since = lastDays(days)[0]!
+  const rows = db
+    .prepare("SELECT payload FROM events WHERE kind = 'vision' AND ts >= ?")
+    .all(since) as { payload: string }[]
+
+  const counts: Record<string, number> = {}
+  for (const row of rows) {
+    const action = (JSON.parse(row.payload) as { action?: string }).action
+    if (action) counts[action] = (counts[action] ?? 0) + 1
+  }
+  return counts
 }

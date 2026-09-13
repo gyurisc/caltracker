@@ -10,8 +10,21 @@ import type { VisionLabel, VisionItem } from './vision.ts'
 
 export const PENDING_TTL_MS = 30 * 60 * 1000
 
+/**
+ * `chatId`/`messageId` locate the card's own message, so a correction typed
+ * afterwards can rewrite the card in place rather than starting a new one.
+ * `proposed` is the untouched model output, kept so a correction can be
+ * recorded as the pair it is: what was guessed, and what it actually weighed.
+ */
 export type PendingCard =
-  | { kind: 'meal'; items: VisionItem[]; note: string | null }
+  | {
+      kind: 'meal'
+      items: VisionItem[]
+      note: string | null
+      chatId: number
+      messageId: number
+      proposed: VisionItem[]
+    }
   | { kind: 'label'; label: VisionLabel }
 
 export type Pending = PendingCard & { at: number }
@@ -41,6 +54,26 @@ export function take(key: string, now = Date.now()): Pending | undefined {
 
 export function peek(key: string): Pending | undefined {
   return store.get(key)
+}
+
+/** The newest meal card in a chat — what a bare `20g` must be referring to. */
+export function latestMeal(
+  chatId: number,
+  now = Date.now(),
+): { key: string; pending: Pending } | undefined {
+  sweep(now)
+  let best: { key: string; pending: Pending } | undefined
+  for (const [key, pending] of store) {
+    if (pending.kind !== 'meal' || pending.chatId !== chatId) continue
+    if (!best || pending.at > best.pending.at) best = { key, pending }
+  }
+  return best
+}
+
+/** A correction rewrites the card; the entry has to be swapped, not re-keyed. */
+export function replace(key: string, entry: PendingCard): void {
+  const existing = store.get(key)
+  if (existing) store.set(key, { ...entry, at: existing.at })
 }
 
 export function size(): number {

@@ -2,7 +2,10 @@ import { lastDays, localDate } from './config.ts'
 import {
   ADVICE_CLEAN_SPAN, calibrate, SETTLE_DAYS, TARGET_RATE_HI, TARGET_RATE_LO, type DayPoint,
 } from './calibrate.ts'
-import { foodsOn, getDay, getSettings, getSteps, getWeights, recentMisses, totalsFor } from './db.ts'
+import {
+  foodsOn, getDay, getSettings, getSteps, getWeights, recentMisses, totalsFor,
+  visionCorrections, visionCounts,
+} from './db.ts'
 import { provenanceOf } from './foods.ts'
 import { nearMatches } from './similar.ts'
 import { vocabTable } from './vocab.ts'
@@ -217,4 +220,46 @@ export function calibrationReport(windowDays = 28): string {
     '',
     'measured burn comes from your own intake and weight trend, not a calculator.',
   ].join('\n')
+}
+
+/**
+ * What the photo reader has been getting right and wrong. The corrections are
+ * the substance: a guessed weight beside a weighed one is the only portion
+ * ground truth this app collects, and the bias line is the first thing a future
+ * calibration would use.
+ */
+export function visionReport(days = 90): string {
+  const counts = visionCounts(days)
+  const proposed = counts.proposed ?? 0
+  if (proposed === 0) return `no photos read in the last ${days} days`
+
+  const fixes = visionCorrections(days)
+  const withBoth = fixes.filter((f) => f.proposedGrams != null && f.proposedGrams > 0)
+  const errors = withBoth.map((f) => (f.proposedGrams! - f.actualGrams) / f.actualGrams)
+  const bias = errors.length ? errors.reduce((a, b) => a + b, 0) / errors.length : null
+
+  const lines = [
+    `photo cards · last ${days} days`,
+    `${proposed} read · ${counts.accepted ?? 0} logged · ${counts.rejected ?? 0} dropped`,
+    `${fixes.length} portion${fixes.length === 1 ? '' : 's'} corrected`,
+  ]
+
+  if (bias != null) {
+    const pct = Math.round(Math.abs(bias) * 100)
+    lines.push(
+      '',
+      pct < 5
+        ? `no consistent bias — off by ${pct}% on average`
+        : `runs ${bias > 0 ? 'heavy' : 'light'} by ${pct}% on the portions you corrected`,
+      `over ${errors.length} correction${errors.length === 1 ? '' : 's'} — too few to calibrate on yet`,
+    )
+  }
+
+  if (fixes.length) {
+    lines.push('', ...fixes.slice(-8).map((f) =>
+      `${f.ts.slice(5, 10)}  ${f.name}  guessed ${f.proposedGrams ?? '?'}g → ${f.actualGrams}g` +
+      (f.countPath ? '  (counted)' : '')))
+  }
+
+  return lines.join('\n')
 }

@@ -422,3 +422,21 @@ describe('countable foods resolve by count, not by gram estimate', () => {
     expect(r.item.grams).toBe(50)
   })
 })
+
+describe('a weight typed with no card open is not swallowed', () => {
+  it('lets a bare weight fall through to normal logging', async () => {
+    // No photo card exists, so `20g` is not a correction. It has to reach the
+    // parser and be refused there — silently eating it would be the worst
+    // outcome, a message that looks handled and logs nothing.
+    sent = []
+    await bot.handleUpdate(update(OWNER, '20g') as never)
+    expect(sent.join(' ')).not.toContain('tap Log it')
+    expect(sent.length).toBeGreaterThan(0)
+  })
+
+  it('still logs a normal food-and-weight message', async () => {
+    sent = []
+    await bot.handleUpdate(update(OWNER, 'black coffee') as never)
+    expect(sent.join(' ')).toContain('+')
+  })
+})
