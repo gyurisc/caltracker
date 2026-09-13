@@ -1,4 +1,4 @@
-import { Bot } from 'grammy'
+import { Bot, InlineKeyboard } from 'grammy'
 import { addDays, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
 import {
   deleteFood, foodsOn, foodsWithName, getDay, getSettings, mostRecentFood, setActivity, setSteps,
@@ -11,6 +11,10 @@ import { activityLabel, deriveKcal, normalizeActivity, targetKcal } from '../nut
 import { calibrationReport, n, todayLine, todayReport, vocabReport } from '../report.ts'
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
 import { addAlias, findFood, removeFood, saveFood, vocabTable } from '../vocab.ts'
+import { put as putPending, take as takePending } from '../pending.ts'
+import { readPhoto, type VisionItem } from '../vision.ts'
+import { addFoods, logEvent } from '../db.ts'
+import { scaleTo } from '../parse.ts'
 
 /** Telegram rejects anything over 4096 characters, so long reports go in parts. */
 const TELEGRAM_LIMIT = 3900
@@ -32,6 +36,35 @@ function chunk(text: string): string[] {
 
 async function replyLong(ctx: { reply: (t: string) => Promise<unknown> }, text: string): Promise<void> {
   for (const part of chunk(text)) await ctx.reply(part)
+}
+
+/** Largest thumbnail Telegram offers; the server resizes it anyway. */
+async function downloadPhoto(ctx: {
+  message?: { photo?: { file_id: string }[] }
+  getFile: () => Promise<{ file_path?: string }>
+}): Promise<Buffer | null> {
+  const sizes = ctx.message?.photo
+  if (!sizes?.length) return null
+  const file = await ctx.getFile()
+  if (!file.file_path) return null
+  const res = await fetch(`https://api.telegram.org/file/bot${TELEGRAM_BOT_TOKEN}/${file.file_path}`)
+  if (!res.ok) return null
+  return Buffer.from(await res.arrayBuffer())
+}
+
+/**
+ * A name the table already knows keeps the table's macros — those are chosen or
+ * measured, and the model's portion guess is the only part worth borrowing.
+ */
+function resolveAgainstTable(item: VisionItem): { item: VisionItem; known: boolean } {
+  const food = findFood(item.name)
+  if (!food || item.grams == null) return { item, known: Boolean(food) }
+  const scaled = scaleTo(food, item.grams, item.cooked)
+  if (!scaled) return { item, known: true }
+  return {
+    known: true,
+    item: { ...item, name: food.key, ...scaled, kcalDisputed: false },
+  }
 }
 
 export function createBot(): Bot {
@@ -370,9 +403,115 @@ export function createBot(): Bot {
     return ctx.reply(`+ ${names} · ${n(kcal)} kcal · ${todayLine()}`)
   })
 
-  bot.on('message:photo', (ctx) =>
-    ctx.reply('photo logging needs vision, which is not wired yet. Type the food for now.'),
-  )
+  bot.on('message:photo', async (ctx) => {
+    const note = await ctx.reply('reading the photo…')
+    const image = await downloadPhoto(ctx)
+    if (!image) return ctx.api.editMessageText(note.chat.id, note.message_id, 'could not fetch that photo')
+
+    const result = await readPhoto(image, ctx.message.caption ?? null)
+    if (!result.ok) {
+      logEvent('error', { kind: 'vision_fail', error: result.error })
+      return ctx.api.editMessageText(note.chat.id, note.message_id, result.error)
+    }
+
+    if (result.read.kind === 'label') {
+      const l = result.read
+      const key = putPending({ kind: 'label', label: l })
+      const per = l.basis === 'each' ? `each ${l.unitGrams ?? '?'} g` : 'per 100 g'
+      return ctx.api.editMessageText(
+        note.chat.id, note.message_id,
+        [
+          `label · ${l.name} · ${per}`,
+          `${n(l.kcal)} kcal · ${l.proteinG} g P · ${l.carbsG} g C · ${l.fatG} g F`,
+          ...(l.fibreG ? [`fibre ${l.fibreG} g — worth half of it added to carbs`] : []),
+          ...(l.kcalDisputed ? ['the printed energy disagrees with the macros; keeping the macros'] : []),
+          '',
+          'add it to your table?',
+        ].join('\n'),
+        { reply_markup: new InlineKeyboard().text('Add food', `add:${key}`).text('Cancel', `no:${key}`) },
+      )
+    }
+
+    const { items, note: caveat } = result.read
+    const resolved = items.map(resolveAgainstTable)
+    const key = putPending({ kind: 'meal', items: resolved.map((r) => r.item), note: caveat })
+    const kcal = resolved.reduce((s, r) => s + r.item.kcal, 0)
+    const protein = resolved.reduce((s, r) => s + r.item.proteinG, 0)
+    const missing = resolved.filter((r) => !r.known)
+
+    return ctx.api.editMessageText(
+      note.chat.id, note.message_id,
+      [
+        `photo · ${resolved.length} item${resolved.length === 1 ? '' : 's'}`,
+        '',
+        ...resolved.map((r) =>
+          `${r.known ? ' ' : '~'} ${r.item.name} ${r.item.grams ?? '?'}g · ` +
+          `${r.item.proteinG.toFixed(0)}g P · ${n(r.item.kcal)} kcal` +
+          (r.known ? '' : '  (not in your table)')),
+        '',
+        `${n(kcal)} kcal · ${protein.toFixed(0)} g P`,
+        ...(caveat ? [caveat] : []),
+        ...(missing.length
+          ? ['', `${missing.length} not in your table — logged as an estimate, add later with /food`]
+          : []),
+      ].join('\n'),
+      { reply_markup: new InlineKeyboard().text('Log it', `log:${key}`).text('Cancel', `no:${key}`) },
+    )
+  })
+
+  bot.on('callback_query:data', async (ctx) => {
+    const [action, key] = ctx.callbackQuery.data.split(':')
+    if (!key) return ctx.answerCallbackQuery('unknown button')
+
+    if (action === 'no') {
+      takePending(key)
+      await ctx.editMessageText('dropped, nothing logged')
+      return ctx.answerCallbackQuery('dropped')
+    }
+
+    const pending = takePending(key)
+    if (!pending) {
+      await ctx.editMessageText('that card expired — send the photo again')
+      return ctx.answerCallbackQuery('expired')
+    }
+
+    if (action === 'add' && pending.kind === 'label') {
+      const l = pending.label
+      saveFood({
+        key: l.name,
+        aliases: [l.name],
+        basis: l.basis,
+        ...(l.basis === 'each' && l.unitGrams ? { unitGrams: l.unitGrams } : {}),
+        defaultState: 'raw',
+        provenance: 'measured',
+        raw: { proteinG: l.proteinG, carbsG: l.carbsG, fatG: l.fatG },
+      })
+      await ctx.editMessageText(`added ${l.name} · ${n(l.kcal)} kcal per 100 g\n\ntry: ${l.name} 100g`)
+      return ctx.answerCallbackQuery('added')
+    }
+
+    if (action === 'log' && pending.kind === 'meal') {
+      const rows = addFoods(pending.items.map((i) => ({
+        name: i.name,
+        grams: i.grams,
+        cooked: i.cooked,
+        proteinG: i.proteinG,
+        carbsG: i.carbsG,
+        fatG: i.fatG,
+        kcal: i.kcal,
+        source: 'photo' as const,
+        provenance: 'reference' as const,
+      })))
+      const total = rows.reduce((s, r) => s + r.kcal, 0)
+      logEvent('log', { date: localDate(), text: 'photo', ids: rows.map((r) => r.id), kcal: total })
+      await ctx.editMessageText(
+        `+ ${rows.map((r) => r.name).join(', ')} · ${n(total)} kcal · ${todayLine()}`,
+      )
+      return ctx.answerCallbackQuery('logged')
+    }
+
+    return ctx.answerCallbackQuery('that card no longer matches')
+  })
 
   bot.catch((err) => console.error('[bot]', err.error))
 

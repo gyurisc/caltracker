@@ -253,6 +253,29 @@ function segmentStart(chunk: string, at: number): number {
   return lead ? at - lead[0].length : at
 }
 
+/**
+ * A food's macros at a given weight. Shared with the vision path, where the
+ * model supplies the portion and the table supplies everything else.
+ */
+export function scaleTo(
+  entry: FoodEntry,
+  grams: number,
+  cooked: boolean | null = null,
+): { proteinG: number; carbsG: number; fatG: number; kcal: number } | null {
+  const state = cooked == null ? entry.defaultState : cooked ? 'cooked' : 'raw'
+  const macros = (state === 'cooked' ? entry.cooked : entry.raw) ?? entry.raw ?? entry.cooked
+  if (!macros) return null
+
+  const factor = entry.basis === 'each' ? grams / (entry.unitGrams ?? 100) : grams / 100
+  const proteinG = round1(macros.proteinG * factor)
+  const carbsG = round1(macros.carbsG * factor)
+  const fatG = round1(macros.fatG * factor)
+  return {
+    proteinG, carbsG, fatG,
+    kcal: macros.kcal != null ? Math.round(macros.kcal * factor) : deriveKcal(proteinG, carbsG, fatG),
+  }
+}
+
 function buildItem(entry: FoodEntry, segment: string, mealTag: MealTag | null): ParsedItem {
   const chunk = segment
   const state = readState(chunk) ?? entry.defaultState
