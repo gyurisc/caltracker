@@ -300,6 +300,18 @@ export function createBot(): Bot {
 
     const result = logText(text)
     if (!result.ok) {
+      if (result.implausible.length > 0) {
+        // Nearly always a bare number read as a count: `whey 29` is 29 scoops.
+        return ctx.reply(
+          [
+            `that comes to ${result.implausible.join(', ')} — too much for one item, so I did not log it.`,
+            'a bare number is a count, not grams:',
+            '',
+            '29 whey  = 29 scoops',
+            'whey 29g = 29 grams',
+          ].join('\n'),
+        )
+      }
       if (result.needsState.length > 0) {
         const food = result.needsState[0]!
         return ctx.reply(

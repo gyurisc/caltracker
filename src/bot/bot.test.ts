@@ -129,6 +129,16 @@ describe('telegram logging', () => {
     expect(foods()).toHaveLength(0)
   })
 
+  it('refuses a bare count that lands on an absurd portion', async () => {
+    await bot.handleUpdate(update(OWNER, 'whey 29') as never)
+    expect(sent.at(-1)).toContain('too much for one item')
+    expect(sent.at(-1)).toContain('whey 29g = 29 grams')
+    expect(foods().some((f) => f.name === 'whey')).toBe(false)
+
+    await bot.handleUpdate(update(OWNER, 'whey 29g') as never)
+    expect(sent.at(-1)).toContain('+ whey')
+  })
+
   it('asks for dry or cooked instead of guessing at rice', async () => {
     await bot.handleUpdate(update(OWNER, 'rice 200g') as never)
     expect(sent.at(-1)).toContain('say dry or cooked')

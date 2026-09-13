@@ -283,6 +283,25 @@ describe('accented aliases', () => {
   })
 })
 
+describe('a portion nobody eats', () => {
+  it('refuses a bare number read as a count when the result is absurd', () => {
+    // The real case: `Whey 29` meant 29 grams and logged 29 scoops —
+    // 870 g of powder, 696 g of protein, 3,408 kcal, in one message.
+    const r = parseMessage('whey 29', at('12:00'))
+    expect(r.ok).toBe(false)
+    if (r.ok) return
+    expect(r.implausible[0]).toContain('whey')
+    expect(r.implausible[0]).toContain('3408')
+    expect(r.unmatched).toEqual([])
+  })
+
+  it('leaves the gram form and ordinary large meals alone', () => {
+    expect(items('whey 29g')[0]!.kcal).toBe(114)
+    expect(items('2 whey')[0]!.grams).toBe(60)
+    expect(items('10 eggs')[0]!.kcal).toBe(700)
+  })
+})
+
 describe('provenance', () => {
   it('marks table rows as reference, since none has been weighed yet', () => {
     expect(items('black coffee')[0]!.provenance).toBe('reference')

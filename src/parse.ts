@@ -48,8 +48,12 @@ export type ParsedItem = {
 
 export type ParseResult =
   | { ok: true; items: ParsedItem[] }
-  /** `needsState` holds foods that matched but did not say raw or cooked. */
-  | { ok: false; unmatched: string[]; needsState: string[] }
+  /**
+   * `needsState` holds foods that matched but did not say raw or cooked.
+   * `implausible` holds a single item too large to be a real portion — almost
+   * always a bare number read as a count: `whey 29` is 29 scoops, not 29 grams.
+   */
+  | { ok: false; unmatched: string[]; needsState: string[]; implausible: string[] }
 
 /** Never crashes at midnight: hour 0 is breakfast. */
 export function mealTagFromClock(hour: number = localHour()): MealTag {
@@ -292,13 +296,21 @@ function buildItem(entry: FoodEntry, segment: string, mealTag: MealTag | null): 
  * Every chunk must hit the table. One miss and the whole message is handed off
  * (to vision, or to a confirm card) rather than half-logged.
  */
+/**
+ * One logged item above this is a mistake, not a meal. Set above a genuine
+ * outlier — a kilo of cooked chicken is 1,560 and someone batch-cooking really
+ * might log it — because the real failures land far higher: a bare number read
+ * as a count made `whey 29` into 29 scoops and 3,408 kcal.
+ */
+export const MAX_ITEM_KCAL = 2000
+
 export function parseMessage(
   message: string,
   now: Date = new Date(),
   table: FoodTable = SEED_TABLE,
 ): ParseResult {
   const chunks = splitChunks(message)
-  if (chunks.length === 0) return { ok: false, unmatched: [], needsState: [] }
+  if (chunks.length === 0) return { ok: false, unmatched: [], needsState: [], implausible: [] }
 
   const messageMeal = findMealWord(message.toLowerCase())
   const mealTag = messageMeal ?? mealTagFromClock(Number(
@@ -308,6 +320,7 @@ export function parseMessage(
   const items: ParsedItem[] = []
   const unmatched: string[] = []
   const needsState: string[] = []
+  const implausible: string[] = []
 
   for (const chunk of chunks) {
     const matches = findMatches(chunk, table)
@@ -330,13 +343,17 @@ export function parseMessage(
       .filter((k): k is string => k !== null)
     if (ambiguous.length) { needsState.push(...ambiguous); continue }
 
-    matches.forEach((m, i) => {
-      items.push(buildItem(m.entry, segments[i]!, mealTag))
-    })
+    const built = matches.map((m, i) => buildItem(m.entry, segments[i]!, mealTag))
+    const tooBig = built.filter((item) => item.kcal > MAX_ITEM_KCAL)
+    if (tooBig.length) {
+      implausible.push(...tooBig.map((i) => `${i.name} ${i.grams ?? '?'}g · ${i.kcal} kcal`))
+      continue
+    }
+    items.push(...built)
   }
 
-  if (unmatched.length > 0 || needsState.length > 0 || items.length === 0) {
-    return { ok: false, unmatched, needsState }
+  if (unmatched.length > 0 || needsState.length > 0 || implausible.length > 0 || items.length === 0) {
+    return { ok: false, unmatched, needsState, implausible }
   }
   return { ok: true, items }
 }
