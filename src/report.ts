@@ -7,7 +7,7 @@ import {
   visionCorrections, visionCounts,
 } from './db.ts'
 import { provenanceOf } from './foods.ts'
-import { nearMatches } from './similar.ts'
+import { matchTier, nearMatches } from './similar.ts'
 import { vocabTable } from './vocab.ts'
 import { activityLabel, deriveKcal, formulaMaintenance, targetKcal } from './nutrition.ts'
 
@@ -73,9 +73,21 @@ export function missesReport(days = 30): string {
 export function vocabReport(query = ''): string {
   const needle = query.trim().toLowerCase()
   const all = [...vocabTable().entries].sort((a, b) => a.key.localeCompare(b.key))
-  const entries = needle
-    ? all.filter((e) => [e.key, ...e.aliases].some((name) => name.toLowerCase().includes(needle)))
-    : all
+  // Keep only the best tier of match that exists, so `cola` returns coca cola
+  // and not chocolate — the letters are in `chocolate`, mid-word, and that hit
+  // is noise next to a real one.
+  const scored = needle
+    ? all.map((e) => ({ e, tier: matchTier([e.key, ...e.aliases], needle) })).filter((m) => m.tier >= 0)
+    : all.map((e) => ({ e, tier: 0 }))
+  // Exact and word-start are both real matches and belong together: searching
+  // `milk` should show `ikea milk chocolate` beside `milk`. Only when neither
+  // exists does the mid-word tier get shown at all.
+  const bestTier = scored.length ? Math.min(...scored.map((m) => m.tier)) : 0
+  const cutoff = Math.max(bestTier, 1)
+  const entries = scored
+    .filter((m) => m.tier <= cutoff)
+    .sort((a, b) => a.tier - b.tier || a.e.key.localeCompare(b.e.key))
+    .map((m) => m.e)
 
   if (entries.length === 0) {
     // Compare against single words too: `kola` is far from `coca cola zero`

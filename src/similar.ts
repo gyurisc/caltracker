@@ -74,3 +74,33 @@ export function nearMatches(phrase: string, candidates: string[], limit = 3): st
   }
   return out
 }
+
+/**
+ * How well a needle matches a food's names, lower is better.
+ *
+ * Plain substring matching is what made `cola` return `chocolate` — the letters
+ * really are in there, in the middle of a word, and the match is meaningless.
+ * So a hit at a word boundary outranks a hit inside a word, and the caller
+ * keeps only the best tier that exists. Mid-word matches are still reachable,
+ * because `ola` or `csoki` has nowhere else to land, but they never crowd out a
+ * real one.
+ *
+ * 0 exact · 1 starts a word · 2 inside a word · -1 no match
+ */
+export function matchTier(names: string[], needle: string): number {
+  const n = needle.trim().toLowerCase()
+  if (!n) return -1
+
+  let best = -1
+  // Escaped so a food name with punctuation cannot build a broken pattern.
+  const escaped = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const atBoundary = new RegExp(`(?<![\\p{L}\\p{N}])${escaped}`, 'u')
+
+  for (const raw of names) {
+    const name = raw.toLowerCase()
+    if (name === n) return 0
+    if (atBoundary.test(name)) best = best === -1 ? 1 : Math.min(best, 1)
+    else if (name.includes(n) && best === -1) best = 2
+  }
+  return best
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { editDistance, nearMatches, tolerance } from './similar.ts'
+import { editDistance, matchTier, nearMatches, tolerance } from './similar.ts'
 
 describe('editDistance', () => {
   it('counts a transposition as one, not two', () => {
@@ -40,5 +40,36 @@ describe('nearMatches', () => {
     expect(tolerance('pepsi zero sugar')).toBe(3)
     // `pho` is a real food two edits from `rice`, and must not be corrected to it.
     expect(nearMatches('pho', vocab)).toEqual([])
+  })
+})
+
+describe('ranking a food search', () => {
+  it('puts a word-boundary hit above one inside a word', () => {
+    expect(matchTier(['coca cola zero'], 'cola')).toBe(1)
+    expect(matchTier(['dark chocolate', 'chocolate'], 'cola')).toBe(2)
+  })
+
+  it('calls an exact name the best match there is', () => {
+    expect(matchTier(['rice'], 'rice')).toBe(0)
+    expect(matchTier(['dark chocolate', 'etcsoki'], 'etcsoki')).toBe(0)
+  })
+
+  it('matches the start of a later word', () => {
+    expect(matchTier(['ikea milk chocolate'], 'milk')).toBe(1)
+    expect(matchTier(['dark chocolate'], 'choc')).toBe(1)
+  })
+
+  it('handles a multi-word needle', () => {
+    expect(matchTier(['coca cola zero'], 'coca cola')).toBe(1)
+  })
+
+  it('does not treat an accent as a word break', () => {
+    expect(matchTier(['étcsoki'], 'csoki')).toBe(2)
+    expect(matchTier(['et csoki'], 'csoki')).toBe(1)
+  })
+
+  it('says so when nothing matches', () => {
+    expect(matchTier(['rice', 'chicken'], 'zzz')).toBe(-1)
+    expect(matchTier(['rice'], '')).toBe(-1)
   })
 })
