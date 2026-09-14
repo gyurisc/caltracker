@@ -18,6 +18,7 @@ import { latestMeal, put as putPending, replace as replacePending, take as takeP
 import { parseCorrection, targetIndex } from '../correction.ts'
 import { prepareImage, readPrepared, type VisionItem } from '../vision.ts'
 import { deletePhoto, savePhoto } from '../photos.ts'
+import { askCoach, forget, historyFor, remember } from '../coach.ts'
 import { addFoods, logEvent } from '../db.ts'
 import { scaleTo } from '../parse.ts'
 
@@ -235,6 +236,7 @@ export function createBot(): Bot {
         '/unfood kefir — forget one',
         '/alias rizs = rice — another name for a food I know',
         '/week — last 7 days',
+        '/coach — what to eat next, against today\'s log',
         '/waist 98 — waist in cm, weekly',
         '/trend — measured burn rate vs your targets',
         '/vision — how well photo reading is doing',
@@ -402,6 +404,39 @@ export function createBot(): Bot {
     if (!Number.isFinite(kg) || kg <= 0 || kg > 400) return ctx.reply('usage: /weight 74.2')
     setWeight(localDate(), kg)
     return ctx.reply(`weight ${kg} kg · ${localDate()}`)
+  })
+
+  bot.command('coach', async (ctx) => {
+    const question = (ctx.match ?? '').toString().trim()
+    const chatId = ctx.chat.id
+    // The model reasons for half a minute. A typing indicator lasts five
+    // seconds, so without a placeholder the bot simply looks dead.
+    const note = await ctx.reply('thinking about today…')
+
+    const answer = await askCoach(question, historyFor(chatId))
+    if (!answer.ok) {
+      return ctx.api.editMessageText(note.chat.id, note.message_id, answer.error)
+    }
+
+    remember(chatId, [
+      { role: 'user', content: question || 'How should I carry on eating today?' },
+      { role: 'assistant', content: answer.text },
+    ])
+    // Edited in place when it fits; a long answer needs its own messages, so
+    // the placeholder becomes the first of them.
+    const parts = chunk(answer.text)
+    await ctx.api.editMessageText(note.chat.id, note.message_id, parts[0]!, {
+      parse_mode: 'Markdown',
+    }).catch(() => ctx.api.editMessageText(note.chat.id, note.message_id, parts[0]!))
+    for (const part of parts.slice(1)) await ctx.reply(part)
+    return undefined
+  })
+
+  // A follow-up needs a clean slate sometimes — yesterday's thread advising on
+  // yesterday's log is worse than starting over.
+  bot.command('newcoach', (ctx) => {
+    forget(ctx.chat.id)
+    return ctx.reply('coach thread cleared. /coach starts fresh.')
   })
 
   bot.command('waist', (ctx) => {
