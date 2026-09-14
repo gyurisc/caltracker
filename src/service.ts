@@ -8,7 +8,10 @@ export type LogOutcome =
   | { ok: true; rows: FoodRow[] }
   | { ok: false; unmatched: string[]; needsState: string[]; implausible: string[] }
 
-export function logText(text: string, opts: { date?: string; time?: string } = {}): LogOutcome {
+export function logText(
+  text: string,
+  opts: { date?: string; time?: string; photoId?: string | null } = {},
+): LogOutcome {
   const parsed = parseMessage(text, undefined, vocabTable())
   if (!parsed.ok) {
     // A missing state is a question, not a vocabulary gap — keep it out of the
@@ -39,8 +42,9 @@ export function logText(text: string, opts: { date?: string; time?: string } = {
       carbsG: i.carbsG,
       fatG: i.fatG,
       kcal: i.kcal,
-      source: 'text' as const,
+      source: opts.photoId ? ('photo' as const) : ('text' as const),
       provenance: i.provenance,
+      photoPath: opts.photoId ?? null,
     })),
   )
 

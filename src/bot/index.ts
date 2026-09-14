@@ -17,7 +17,7 @@ import { addAlias, findFood, removeFood, saveFood, vocabTable } from '../vocab.t
 import { latestMeal, put as putPending, replace as replacePending, take as takePending } from '../pending.ts'
 import { parseCorrection, targetIndex } from '../correction.ts'
 import { prepareImage, readPrepared, type VisionItem } from '../vision.ts'
-import { deletePhoto, savePhoto } from '../photos.ts'
+import { deletePhoto, readPhoto as readStoredPhoto, savePhoto } from '../photos.ts'
 import { askCoach, forget, historyFor, remember } from '../coach.ts'
 import { addFoods, logEvent } from '../db.ts'
 import { scaleTo } from '../parse.ts'
@@ -628,8 +628,37 @@ export function createBot(): Bot {
     }
     const photoId = await savePhoto(localDate(), jpeg)
 
+    // A caption that is already a complete log line needs no model at all. The
+    // user's own weight beats any portion estimate, the table's macros beat any
+    // guess, and it costs nothing and takes no time. The photo still gets kept
+    // and attached — it is evidence for the entry, not a question about it.
+    const caption = ctx.message?.caption?.trim() ?? ''
+    if (caption) {
+      const direct = logText(caption, { photoId })
+      if (direct.ok) {
+        const kcal = direct.rows.reduce((sum, r) => sum + r.kcal, 0)
+        const key = putPending({
+          kind: 'logged',
+          photoId,
+          ids: direct.rows.map((r) => r.id),
+          caption,
+          chatId: note.chat.id,
+          messageId: note.message_id,
+        })
+        return ctx.api.editMessageText(
+          note.chat.id, note.message_id,
+          [
+            `+ ${direct.rows.map((r) => r.name).join(', ')} · ${n(kcal)} kcal · ${todayLine()}`,
+            '',
+            'read from your caption, photo kept — no guessing needed',
+          ].join('\n'),
+          { reply_markup: new InlineKeyboard().text('Read the photo instead', `look:${key}`) },
+        )
+      }
+    }
+
     const known = vocabTable().entries.map((e) => e.key)
-    const result = await readPrepared(jpeg, ctx.message?.caption ?? null, undefined, known)
+    const result = await readPrepared(jpeg, caption || null, undefined, known)
     if (!result.ok) {
       logEvent('error', { kind: 'vision_fail', error: result.error })
       return ctx.api.editMessageText(note.chat.id, note.message_id, result.error)
@@ -690,6 +719,50 @@ export function createBot(): Bot {
   bot.on('callback_query:data', async (ctx) => {
     const [action, key] = ctx.callbackQuery.data.split(':')
     if (!key) return ctx.answerCallbackQuery('unknown button')
+
+    // The caption logged something, but the photo was about something else.
+    // Withdraw those rows and read the plate after all.
+    if (action === 'look') {
+      const held = takePending(key)
+      if (!held || held.kind !== 'logged') {
+        await ctx.editMessageText('that card expired — send the photo again')
+        return ctx.answerCallbackQuery('expired')
+      }
+      for (const id of held.ids) deleteFood(id)
+      await ctx.editMessageText('reading the photo…')
+      await ctx.answerCallbackQuery('reading')
+
+      const jpeg = readStoredPhoto(held.photoId)
+      if (!jpeg) return ctx.editMessageText('that photo is gone — send it again')
+
+      const known = vocabTable().entries.map((e) => e.key)
+      const reread = await readPrepared(jpeg, held.caption, undefined, known)
+      if (!reread.ok) return ctx.editMessageText(reread.error)
+      if (reread.read.kind !== 'meal') {
+        return ctx.editMessageText('that reads as a label, not a plate — send it on its own')
+      }
+
+      const resolved = reread.read.items.map(resolveAgainstTable).map((r) => r.item)
+      const next = putPending({
+        kind: 'meal',
+        items: resolved,
+        note: reread.read.note,
+        chatId: held.chatId,
+        messageId: held.messageId,
+        proposed: reread.read.items,
+        photoId: held.photoId,
+      })
+      logEvent('vision', {
+        action: 'proposed',
+        card: 'meal',
+        items: proposalRecord(reread.read.items, resolved),
+      })
+      return ctx.editMessageText(mealCard(resolved, reread.read.note), {
+        reply_markup: new InlineKeyboard()
+          .text('Log it', `log:${next}`)
+          .text('Cancel', `no:${next}`),
+      })
+    }
 
     if (action === 'no') {
       const dropped = takePending(key)

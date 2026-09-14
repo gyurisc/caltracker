@@ -440,3 +440,42 @@ describe('a weight typed with no card open is not swallowed', () => {
     expect(sent.join(' ')).toContain('+')
   })
 })
+
+describe('a photo whose caption already says what it is', () => {
+  let logText: typeof import('../service.ts').logText
+
+  beforeAll(async () => {
+    ;({ logText } = await import('../service.ts'))
+    const { saveFood } = await import('../vocab.ts')
+    saveFood({
+      key: 'testedamame', basis: 'per100g', defaultGrams: 150,
+      raw: { proteinG: 12, carbsG: 2.4, fatG: 6.7 },
+      defaultState: 'raw', provenance: 'measured', stateRequired: false,
+      aliases: ['testedamame'],
+    })
+  })
+
+  it('logs from the caption and marks the row as coming from a photo', () => {
+    // The whole point of the short circuit: the user's own weight and the
+    // table's macros, with no model in the loop, and the photo still attached.
+    const r = logText('testedamame 150g', { photoId: '2026-09-14-aaaabbbbccccdddd' })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.rows[0]!.grams).toBe(150)
+    expect(r.rows[0]!.source).toBe('photo')
+    expect(r.rows[0]!.photo_path).toBe('2026-09-14-aaaabbbbccccdddd')
+  })
+
+  it('stays a text row when there is no photo', () => {
+    const r = logText('testedamame 150g')
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.rows[0]!.source).toBe('text')
+    expect(r.rows[0]!.photo_path).toBeNull()
+  })
+
+  it('refuses a caption the parser does not fully understand', () => {
+    // Which is what sends the photo to the model instead.
+    expect(logText('some plate of something', { photoId: 'x' }).ok).toBe(false)
+  })
+})

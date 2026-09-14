@@ -28,6 +28,19 @@ export type PendingCard =
       photoId?: string | null
     }
   | { kind: 'label'; label: VisionLabel; photoId?: string | null }
+  /**
+   * A photo whose caption was already a complete log line, so it was written
+   * straight away. Held only so the escape hatch works: if the caption was not
+   * what the photo was about, the rows can be withdrawn and the plate read.
+   */
+  | {
+      kind: 'logged'
+      photoId: string
+      ids: string[]
+      caption: string
+      chatId: number
+      messageId: number
+    }
 
 export type Pending = PendingCard & { at: number }
 
