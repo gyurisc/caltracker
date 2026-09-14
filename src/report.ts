@@ -238,10 +238,18 @@ export function visionReport(days = 90): string {
   const errors = withBoth.map((f) => (f.proposedGrams! - f.actualGrams) / f.actualGrams)
   const bias = errors.length ? errors.reduce((a, b) => a + b, 0) / errors.length : null
 
+  const labels = counts['label.proposed'] ?? 0
+  const meals = counts['meal.proposed'] ?? 0
+
   const lines = [
     `photo cards · last ${days} days`,
-    `${proposed} read · ${counts.accepted ?? 0} logged · ${counts.rejected ?? 0} dropped`,
-    `${fixes.length} portion${fixes.length === 1 ? '' : 's'} corrected`,
+    `${proposed} read · ${counts.accepted ?? 0} kept · ${counts.rejected ?? 0} dropped`,
+    '',
+    // A label read is worth more than a plate read: it becomes a measured row
+    // that every later meal reuses, where a plate is one estimate and then gone.
+    `${labels} label${labels === 1 ? '' : 's'} · ${counts['label.accepted'] ?? 0} added to your table`,
+    `${meals} plate${meals === 1 ? '' : 's'} · ${counts['meal.accepted'] ?? 0} logged` +
+      `  · ${fixes.length} portion${fixes.length === 1 ? '' : 's'} corrected`,
   ]
 
   if (bias != null) {

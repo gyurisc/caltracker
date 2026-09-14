@@ -523,7 +523,11 @@ export function visionCorrections(days = 90): VisionCorrection[] {
   return out
 }
 
-/** Counts of proposed / accepted / rejected cards, for the funnel. */
+/**
+ * Counts of proposed / accepted / rejected cards, split by card type. The two
+ * are worth different things: a label read becomes a permanent measured row in
+ * the table, while a plate read is one meal's estimate and then gone.
+ */
 export function visionCounts(days = 90): Record<string, number> {
   const since = lastDays(days)[0]!
   const rows = db
@@ -531,9 +535,12 @@ export function visionCounts(days = 90): Record<string, number> {
     .all(since) as { payload: string }[]
 
   const counts: Record<string, number> = {}
+  const bump = (k: string) => { counts[k] = (counts[k] ?? 0) + 1 }
   for (const row of rows) {
-    const action = (JSON.parse(row.payload) as { action?: string }).action
-    if (action) counts[action] = (counts[action] ?? 0) + 1
+    const p = JSON.parse(row.payload) as { action?: string; card?: string }
+    if (!p.action) continue
+    bump(p.action)
+    if (p.card) bump(`${p.card}.${p.action}`)
   }
   return counts
 }

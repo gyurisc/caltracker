@@ -582,6 +582,15 @@ export function createBot(): Bot {
     if (result.read.kind === 'label') {
       const l = result.read
       const key = putPending({ kind: 'label', label: l })
+      logEvent('vision', {
+        action: 'proposed',
+        card: 'label',
+        name: l.name,
+        basis: l.basis,
+        kcal: l.kcal,
+        kcalDisputed: l.kcalDisputed,
+        alreadyKnown: Boolean(findFood(l.name)),
+      })
       const per = l.basis === 'each' ? `each ${l.unitGrams ?? '?'} g` : 'per 100 g'
       return ctx.api.editMessageText(
         note.chat.id, note.message_id,
@@ -609,7 +618,11 @@ export function createBot(): Bot {
       messageId: note.message_id,
       proposed: items,
     })
-    logEvent('vision', { action: 'proposed', items: proposalRecord(items, resolved) })
+    logEvent('vision', {
+      action: 'proposed',
+      card: 'meal',
+      items: proposalRecord(items, resolved),
+    })
 
     return ctx.api.editMessageText(
       note.chat.id, note.message_id, mealCard(resolved, caveat),
@@ -626,8 +639,11 @@ export function createBot(): Bot {
       if (dropped?.kind === 'meal') {
         logEvent('vision', {
           action: 'rejected',
+          card: 'meal',
           items: dropped.items.map((i) => ({ name: i.name, grams: i.grams })),
         })
+      } else if (dropped?.kind === 'label') {
+        logEvent('vision', { action: 'rejected', card: 'label', name: dropped.label.name })
       }
       await ctx.editMessageText('dropped, nothing logged')
       return ctx.answerCallbackQuery('dropped')
@@ -655,6 +671,7 @@ export function createBot(): Bot {
         raw: { proteinG: l.proteinG, carbsG: round1(carbsG), fatG: l.fatG },
       })
       const kcal = deriveKcal(l.proteinG, carbsG, l.fatG)
+      logEvent('vision', { action: 'accepted', card: 'label', name: l.name, kcal })
       await ctx.editMessageText(
         [
           `added ${l.name} · ${n(kcal)} kcal per 100 g`,
@@ -682,6 +699,7 @@ export function createBot(): Bot {
       logEvent('log', { date: localDate(), text: 'photo', ids: rows.map((r) => r.id), kcal: total })
       logEvent('vision', {
         action: 'accepted',
+        card: 'meal',
         items: pending.items.map((i) => ({
           name: i.name,
           grams: i.grams,
