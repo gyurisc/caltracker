@@ -161,6 +161,14 @@ function WeightTrend({ trend, goal }: { trend: TrendDay[]; goal: number }) {
   const first = points[0]
   const delta = latest && first ? latest.weightKg - first.weightKg : null
 
+  // Waist is weekly, so it has far fewer points than the weight line and does
+  // not get a line of its own — two or three dots would draw a shape that is
+  // not there. The latest reading and its movement are the whole story.
+  const waistPoints = trend.filter((d) => d.waistCm != null) as (TrendDay & { waistCm: number })[]
+  const waist = waistPoints.at(-1)
+  const waistDelta =
+    waist && waistPoints[0] && waistPoints.length > 1 ? waist.waistCm - waistPoints[0].waistCm : null
+
   const w = 280
   const h = 44
   let path = ''
@@ -189,6 +197,9 @@ function WeightTrend({ trend, goal }: { trend: TrendDay[]; goal: number }) {
           )}
         </span>
         <span className="faint" style={{ fontSize: 11 }}>
+          {waist && <><b className="waist">{waist.waistCm} cm waist</b>{waistDelta != null && (
+            <span className={waistDelta <= 0 ? 'green' : 'red'}> {waistDelta > 0 ? '+' : ''}{waistDelta.toFixed(1)}</span>
+          )} · </>}
           {deficitDays}/{logged.length} days in deficit · {proteinDays}/14 days at protein
         </span>
       </div>

@@ -3,13 +3,13 @@ import {
   ADVICE_CLEAN_SPAN, calibrate, SETTLE_DAYS, TARGET_RATE_HI, TARGET_RATE_LO, type DayPoint,
 } from './calibrate.ts'
 import {
-  foodsOn, getDay, getSettings, getSteps, getWeights, recentMisses, totalsFor,
+  foodsOn, getDay, getSettings, getSteps, getWaists, getWeights, recentMisses, totalsFor,
   visionCorrections, visionCounts,
 } from './db.ts'
 import { provenanceOf } from './foods.ts'
 import { matchTier, nearMatches } from './similar.ts'
 import { vocabTable } from './vocab.ts'
-import { activityLabel, deriveKcal, formulaMaintenance, targetKcal } from './nutrition.ts'
+import { activityLabel, deriveKcal, formulaMaintenance, round1, targetKcal } from './nutrition.ts'
 
 export const n = (v: number) => Math.round(v).toLocaleString('en-US')
 
@@ -281,5 +281,52 @@ export function visionReport(days = 90): string {
       (f.countPath ? '  (counted)' : '')))
   }
 
+  return lines.join('\n')
+}
+
+/**
+ * Waist over time. Deliberately separate from the calorie calibration, which it
+ * must never feed: the two answer different questions. The scale cannot tell
+ * fat from water from muscle, and a waist that falls while the scale holds
+ * steady is the outcome the training is for, not a contradiction to resolve.
+ *
+ * Thresholds are the WHO/NICE ones for men, quoted as reference points.
+ */
+export function waistReport(days = 180): string {
+  const dates = lastDays(days)
+  const waists = getWaists(dates)
+  const points = dates
+    .map((d) => ({ date: d, cm: waists[d] }))
+    .filter((p): p is { date: string; cm: number } => typeof p.cm === 'number')
+
+  if (points.length === 0) return 'no waist measurements yet — /waist 98'
+
+  const latest = points[points.length - 1]!
+  const first = points[0]!
+  const lines = [`waist ${latest.cm} cm · ${latest.date}`]
+
+  if (points.length > 1) {
+    const delta = latest.cm - first.cm
+    const weeks = Math.max(1, Math.round(
+      (Date.parse(`${latest.date}T12:00:00Z`) - Date.parse(`${first.date}T12:00:00Z`)) / 6.048e8,
+    ))
+    lines.push(
+      `${delta === 0 ? 'no change' : `${delta > 0 ? '+' : ''}${round1(delta)} cm`} over ${weeks} week${weeks === 1 ? '' : 's'}`,
+      '',
+      ...points.slice(-8).map((p) => `${p.date}  ${p.cm} cm`),
+    )
+  } else {
+    lines.push('one measurement so far — a trend needs a few weeks of them')
+  }
+
+  // Reference points, not a verdict. Same tape, same spot, same time of day is
+  // what makes the series comparable; the absolute number matters less.
+  lines.push(
+    '',
+    latest.cm >= 102 ? 'men: 94 cm and 102 cm are the usual reference marks — above the second'
+      : latest.cm >= 94 ? 'men: 94 cm and 102 cm are the usual reference marks — between the two'
+      : 'men: 94 cm and 102 cm are the usual reference marks — below both',
+    'measure at the navel, on a breath out, before eating',
+  )
   return lines.join('\n')
 }

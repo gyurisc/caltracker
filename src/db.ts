@@ -49,7 +49,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS events (
     id      TEXT PRIMARY KEY,
     ts      TEXT NOT NULL,
-    kind    TEXT NOT NULL CHECK (kind IN ('log','undo','weight','activity','error','vision')),
+    kind    TEXT NOT NULL CHECK (kind IN ('log','undo','weight','activity','error','vision','waist')),
     payload TEXT NOT NULL
   );
 
@@ -101,10 +101,14 @@ if (!columns('days').includes('steps')) {
  * photo cards for an afternoon: the TypeScript union said `vision` was legal
  * while the table still refused it, and every meal card threw on the insert.
  */
-const EVENT_KINDS = ['log', 'undo', 'weight', 'activity', 'error', 'vision'] as const
+const EVENT_KINDS = ['log', 'undo', 'weight', 'activity', 'error', 'vision', 'waist'] as const
 const eventsDDL = (db
   .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='events'")
   .get() as { sql?: string } | undefined)?.sql ?? ''
+
+if (!columns('days').includes('waist_cm')) {
+  db.exec('ALTER TABLE days ADD COLUMN waist_cm REAL')
+}
 
 if (!columns('vocab').includes('photo_id')) {
   // A label photo produces a vocabulary row, not a log row, so without this it
@@ -133,6 +137,7 @@ export type DayRow = {
   date: string
   activity: Activity
   weight_kg: number | null
+  waist_cm: number | null
   workout_name: string | null
   workout_minutes: number | null
   workout_kcal: number | null
@@ -222,6 +227,31 @@ export function setWeight(date: string, kg: number): DayRow {
   db.prepare('UPDATE days SET weight_kg = ? WHERE date = ?').run(kg, date)
   logEvent('weight', { date, kg })
   return db.prepare('SELECT * FROM days WHERE date = ?').get(date) as DayRow
+}
+
+/**
+ * Waist circumference. Measured weekly rather than daily, because it moves far
+ * slower than the scale and a tape read to the nearest centimetre cannot
+ * resolve a day's change — reading it daily would be noise dressed as data.
+ *
+ * It is not an input to the calorie calibration and must not become one. It
+ * answers a different question: the scale cannot tell fat from water from
+ * muscle, and abdominal fat is what the goal is actually about.
+ */
+export function setWaist(date: string, cm: number): DayRow {
+  ensureDay(date)
+  db.prepare('UPDATE days SET waist_cm = ? WHERE date = ?').run(cm, date)
+  logEvent('waist', { date, cm })
+  return db.prepare('SELECT * FROM days WHERE date = ?').get(date) as DayRow
+}
+
+export function getWaists(dates: string[]): Record<string, number | null> {
+  if (dates.length === 0) return {}
+  const q = dates.map(() => '?').join(',')
+  const rows = db
+    .prepare(`SELECT date, waist_cm FROM days WHERE date IN (${q})`)
+    .all(...dates) as { date: string; waist_cm: number | null }[]
+  return Object.fromEntries(rows.map((r) => [r.date, r.waist_cm]))
 }
 
 /** Steps for a finished day. Context for reading the trend, not an input to it. */
@@ -504,7 +534,7 @@ export function recentMisses(days = 30): Miss[] {
 }
 
 export function logEvent(
-  kind: 'log' | 'undo' | 'weight' | 'activity' | 'error' | 'vision',
+  kind: 'log' | 'undo' | 'weight' | 'activity' | 'error' | 'vision' | 'waist',
   payload: unknown,
 ): void {
   db.prepare('INSERT INTO events (id, ts, kind, payload) VALUES (?, ?, ?, ?)')

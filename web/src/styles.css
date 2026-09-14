@@ -211,3 +211,7 @@ td.act { text-align: right; width: 44px; }
   border-radius: 8px;
   border: 1px solid var(--line);
 }
+
+/* Waist sits beside the weight readout, not on its own line: it is the same
+   question asked a slower way, and the scale alone cannot answer it. */
+.waist { color: var(--ink); font-weight: 500; }

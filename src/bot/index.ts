@@ -2,14 +2,16 @@ import { Bot, type Context, InlineKeyboard } from 'grammy'
 import { addDays, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
 import {
   deleteFood, foodsOn, foodsWithName, getDay, getSettings, mostRecentFood, setActivity, setSteps,
-  setWeight, totalsFor,
+  setWaist, setWeight, totalsFor,
 } from '../db.ts'
 import { formatFoodCommand, parseAliasCommand, parseFoodCommand } from '../foodcmd.ts'
 import { bareFoodName } from '../parse.ts'
 import { nearMatches } from '../similar.ts'
 import { activityLabel, deriveKcal, normalizeActivity, targetKcal } from '../nutrition.ts'
 import { round1 } from '../nutrition.ts'
-import { calibrationReport, n, todayLine, todayReport, visionReport, vocabReport } from '../report.ts'
+import {
+  calibrationReport, n, todayLine, todayReport, visionReport, vocabReport, waistReport,
+} from '../report.ts'
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
 import { addAlias, findFood, removeFood, saveFood, vocabTable } from '../vocab.ts'
 import { latestMeal, put as putPending, replace as replacePending, take as takePending } from '../pending.ts'
@@ -233,6 +235,7 @@ export function createBot(): Bot {
         '/unfood kefir — forget one',
         '/alias rizs = rice — another name for a food I know',
         '/week — last 7 days',
+        '/waist 98 — waist in cm, weekly',
         '/trend — measured burn rate vs your targets',
         '/vision — how well photo reading is doing',
         '/weight 74.2 — morning weigh-in',
@@ -399,6 +402,13 @@ export function createBot(): Bot {
     if (!Number.isFinite(kg) || kg <= 0 || kg > 400) return ctx.reply('usage: /weight 74.2')
     setWeight(localDate(), kg)
     return ctx.reply(`weight ${kg} kg · ${localDate()}`)
+  })
+
+  bot.command('waist', (ctx) => {
+    const cm = Number((ctx.match ?? '').toString().replace(',', '.').trim())
+    if (!Number.isFinite(cm) || cm < 40 || cm > 200) return ctx.reply('usage: /waist 98')
+    setWaist(localDate(), cm)
+    return ctx.reply(waistReport())
   })
 
   bot.command('steps', (ctx) => {

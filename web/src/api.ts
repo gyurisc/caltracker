@@ -30,6 +30,8 @@ export type TrendDay = {
   date: string
   activity: Activity
   weightKg: number | null
+  /** Waist in cm. Measured weekly, so most days are null. */
+  waistCm: number | null
   steps: number | null
   kcal: number
   proteinG: number
