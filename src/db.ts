@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { DB_PATH, lastDays, localDate, localStamp, weekdayOf } from './config.ts'
+import { deletePhoto as dropPhoto } from './photos.ts'
 import { SEED_FOODS, type FoodEntry } from './foods.ts'
 import {
   type Activity, type Settings, DEFAULT_SETTINGS, defaultActivityFor,
@@ -104,6 +105,12 @@ const EVENT_KINDS = ['log', 'undo', 'weight', 'activity', 'error', 'vision'] as 
 const eventsDDL = (db
   .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='events'")
   .get() as { sql?: string } | undefined)?.sql ?? ''
+
+if (!columns('vocab').includes('photo_id')) {
+  // A label photo produces a vocabulary row, not a log row, so without this it
+  // has nowhere to live — and label shots are most of what actually gets sent.
+  db.exec('ALTER TABLE vocab ADD COLUMN photo_id TEXT')
+}
 
 if (eventsDDL && !EVENT_KINDS.every((k) => eventsDDL.includes(`'${k}'`))) {
   const list = EVENT_KINDS.map((k) => `'${k}'`).join(',')
@@ -322,6 +329,18 @@ export function deleteFood(id: string): FoodRow | undefined {
   if (!row) return undefined
   db.prepare('DELETE FROM foods WHERE id = ?').run(id)
   logEvent('undo', { id, name: row.name, kcal: row.kcal, date: row.date })
+
+  // One photo of a plate becomes several rows, so it survives until the last of
+  // them is gone — and a label photo is still held by its vocabulary row.
+  if (row.photo_path) {
+    const held = (db
+      .prepare('SELECT COUNT(*) AS n FROM foods WHERE photo_path = ?')
+      .get(row.photo_path) as { n: number }).n
+    const onVocab = (db
+      .prepare('SELECT COUNT(*) AS n FROM vocab WHERE photo_id = ?')
+      .get(row.photo_path) as { n: number }).n
+    if (held === 0 && onVocab === 0) dropPhoto(row.photo_path)
+  }
   return row
 }
 
@@ -359,7 +378,7 @@ type VocabRow = {
   key: string; aliases: string; basis: string; unit_grams: number | null
   unit_noun: string | null; default_grams: number | null; portions: string | null
   default_state: string; provenance: string; raw: string | null; cooked: string | null
-  state_required: number
+  state_required: number; photo_id: string | null
 }
 
 const toEntry = (r: VocabRow): FoodEntry => ({
@@ -375,6 +394,7 @@ const toEntry = (r: VocabRow): FoodEntry => ({
   ...(r.state_required ? { stateRequired: true } : {}),
   ...(r.raw == null ? {} : { raw: JSON.parse(r.raw) as FoodEntry['raw'] }),
   ...(r.cooked == null ? {} : { cooked: JSON.parse(r.cooked) as FoodEntry['cooked'] }),
+  ...(r.photo_id == null ? {} : { photoId: r.photo_id }),
 })
 
 export function allVocab(): FoodEntry[] {
@@ -383,15 +403,19 @@ export function allVocab(): FoodEntry[] {
 
 const upsertVocabRow = db.prepare(`
   INSERT INTO vocab (key, aliases, basis, unit_grams, unit_noun, default_grams,
-                     portions, default_state, provenance, state_required, raw, cooked, updated_at)
+                     portions, default_state, provenance, state_required, raw, cooked,
+                     photo_id, updated_at)
   VALUES (@key, @aliases, @basis, @unit_grams, @unit_noun, @default_grams,
-          @portions, @default_state, @provenance, @state_required, @raw, @cooked, @updated_at)
+          @portions, @default_state, @provenance, @state_required, @raw, @cooked,
+          @photo_id, @updated_at)
   ON CONFLICT(key) DO UPDATE SET
     aliases = excluded.aliases, basis = excluded.basis, unit_grams = excluded.unit_grams,
     unit_noun = excluded.unit_noun, default_grams = excluded.default_grams,
     portions = excluded.portions, default_state = excluded.default_state,
     provenance = excluded.provenance, state_required = excluded.state_required,
     raw = excluded.raw, cooked = excluded.cooked,
+    -- A re-save without a photo must not erase the packet shot already there.
+    photo_id = COALESCE(excluded.photo_id, vocab.photo_id),
     updated_at = excluded.updated_at
 `)
 
@@ -423,6 +447,7 @@ export function upsertVocab(entry: FoodEntry): void {
     state_required: entry.stateRequired ? 1 : 0,
     raw: entry.raw ? JSON.stringify(entry.raw) : null,
     cooked: entry.cooked ? JSON.stringify(entry.cooked) : null,
+    photo_id: entry.photoId ?? null,
     updated_at: localStamp(),
   })
 }

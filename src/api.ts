@@ -8,6 +8,8 @@ import { activityLabel, normalizeActivity, targetKcal, type Activity } from './n
 import { seedSampleData } from './seed.ts'
 import { isWithinUndoWindow, logText } from './service.ts'
 
+import { readPhoto as readStoredPhoto } from './photos.ts'
+
 export const api = new Hono()
 
 /** A malformed body is an empty body, not a 500. */
@@ -28,6 +30,21 @@ function dayView(day: DayRow) {
 }
 
 /** Everything the dashboard needs in one request. */
+/**
+ * The photo behind a log line. Ids are validated in `readPhoto` before they
+ * touch the filesystem — this one comes straight off a URL.
+ *
+ * Immutable: an id is a hash of the bytes, so a cached copy can never be stale.
+ */
+api.get('/photo/:id', (c) => {
+  const size = c.req.query('size') === 'thumb' ? 'thumb' : 'full'
+  const bytes = readStoredPhoto(c.req.param('id'), size)
+  if (!bytes) return c.notFound()
+  c.header('content-type', 'image/jpeg')
+  c.header('cache-control', 'public, max-age=31536000, immutable')
+  return c.body(new Uint8Array(bytes))
+})
+
 api.get('/state', (c) => {
   const date = c.req.query('date') ?? localDate()
   const settings = getSettings()

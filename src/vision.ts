@@ -227,14 +227,27 @@ export async function readPhoto(
   chat: ChatFn = callXai,
   known: string[] = [],
 ): Promise<VisionResult> {
-  if (!XAI_API_KEY) return { ok: false, error: 'no XAI_API_KEY set — photos need one' }
-
   let jpeg: Buffer
   try {
     jpeg = await prepareImage(image)
   } catch (e) {
     return { ok: false, error: (e as Error).message }
   }
+  return readPrepared(jpeg, caption, chat, known)
+}
+
+/**
+ * The same read, on an image already through `prepareImage`. The caller needs
+ * those exact bytes anyway — they are what gets stored beside the log — and
+ * re-encoding them would cost a second quality pass for nothing.
+ */
+export async function readPrepared(
+  jpeg: Buffer,
+  caption: string | null = null,
+  chat: ChatFn = callXai,
+  known: string[] = [],
+): Promise<VisionResult> {
+  if (!XAI_API_KEY) return { ok: false, error: 'no XAI_API_KEY set — photos need one' }
 
   const content: unknown[] = [
     { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${jpeg.toString('base64')}` } },

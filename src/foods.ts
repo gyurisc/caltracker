@@ -42,6 +42,12 @@ export type FoodEntry = {
   stateRequired?: boolean
   raw?: Macros
   cooked?: Macros
+  /**
+   * The label photo this row was read from. A label shot produces no log line,
+   * so without somewhere to hang it the picture of the packet is simply lost —
+   * and it is the one thing that settles "is this the product I meant?".
+   */
+  photoId?: string | null
 }
 
 export type Provenance = 'measured' | 'reference'

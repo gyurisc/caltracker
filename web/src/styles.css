@@ -179,3 +179,35 @@ td.act { text-align: right; width: 44px; }
 .caption i.sw.dash { background: var(--amber); height: 2px; width: 12px; border-radius: 0; }
 .caption i.sw.goalline { background: var(--faint); height: 2px; width: 12px; border-radius: 0; }
 .caption i.sw.line { background: var(--violet); height: 2px; width: 12px; border-radius: 0; }
+
+/* A log line's photo. Small enough not to change the rhythm of the table, big
+   enough to recognise the meal without opening it. */
+.shot {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+  vertical-align: middle;
+  margin-right: 9px;
+  cursor: zoom-in;
+  display: inline-block;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(6 7 9 / 0.88);
+  cursor: zoom-out;
+}
+
+.lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}

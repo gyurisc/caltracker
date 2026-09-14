@@ -14,7 +14,8 @@ import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
 import { addAlias, findFood, removeFood, saveFood, vocabTable } from '../vocab.ts'
 import { latestMeal, put as putPending, replace as replacePending, take as takePending } from '../pending.ts'
 import { parseCorrection, targetIndex } from '../correction.ts'
-import { readPhoto, type VisionItem } from '../vision.ts'
+import { prepareImage, readPrepared, type VisionItem } from '../vision.ts'
+import { deletePhoto, savePhoto } from '../photos.ts'
 import { addFoods, logEvent } from '../db.ts'
 import { scaleTo } from '../parse.ts'
 
@@ -572,8 +573,18 @@ export function createBot(): Bot {
     const image = await downloadPhoto(ctx)
     if (!image) return ctx.api.editMessageText(note.chat.id, note.message_id, 'could not fetch that photo')
 
+    // Stored before the read, because these are the bytes the model sees and
+    // the bytes worth keeping. A card that is dropped takes its photo with it.
+    let jpeg: Buffer
+    try {
+      jpeg = await prepareImage(image)
+    } catch (e) {
+      return ctx.api.editMessageText(note.chat.id, note.message_id, (e as Error).message)
+    }
+    const photoId = await savePhoto(localDate(), jpeg)
+
     const known = vocabTable().entries.map((e) => e.key)
-    const result = await readPhoto(image, ctx.message?.caption ?? null, undefined, known)
+    const result = await readPrepared(jpeg, ctx.message?.caption ?? null, undefined, known)
     if (!result.ok) {
       logEvent('error', { kind: 'vision_fail', error: result.error })
       return ctx.api.editMessageText(note.chat.id, note.message_id, result.error)
@@ -581,7 +592,7 @@ export function createBot(): Bot {
 
     if (result.read.kind === 'label') {
       const l = result.read
-      const key = putPending({ kind: 'label', label: l })
+      const key = putPending({ kind: 'label', label: l, photoId })
       logEvent('vision', {
         action: 'proposed',
         card: 'label',
@@ -617,6 +628,7 @@ export function createBot(): Bot {
       chatId: note.chat.id,
       messageId: note.message_id,
       proposed: items,
+      photoId,
     })
     logEvent('vision', {
       action: 'proposed',
@@ -645,6 +657,7 @@ export function createBot(): Bot {
       } else if (dropped?.kind === 'label') {
         logEvent('vision', { action: 'rejected', card: 'label', name: dropped.label.name })
       }
+      if (dropped?.photoId) deletePhoto(dropped.photoId)
       await ctx.editMessageText('dropped, nothing logged')
       return ctx.answerCallbackQuery('dropped')
     }
@@ -669,6 +682,7 @@ export function createBot(): Bot {
         defaultState: 'raw',
         provenance: 'measured',
         raw: { proteinG: l.proteinG, carbsG: round1(carbsG), fatG: l.fatG },
+        photoId: pending.photoId ?? null,
       })
       const kcal = deriveKcal(l.proteinG, carbsG, l.fatG)
       logEvent('vision', { action: 'accepted', card: 'label', name: l.name, kcal })
@@ -694,6 +708,7 @@ export function createBot(): Bot {
         kcal: i.kcal,
         source: 'photo' as const,
         provenance: 'reference' as const,
+        photoPath: pending.photoId ?? null,
       })))
       const total = rows.reduce((s, r) => s + r.kcal, 0)
       logEvent('log', { date: localDate(), text: 'photo', ids: rows.map((r) => r.id), kcal: total })

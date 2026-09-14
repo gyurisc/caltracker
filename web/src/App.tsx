@@ -99,6 +99,7 @@ function Today({ state }: { state: State }) {
             {items.map((i) => (
               <tr key={i.id}>
                 <td>
+                  {i.photo_path && <Shot id={i.photo_path} alt={i.name} />}
                   {i.meal_tag && <span className="tag">{i.meal_tag} </span>}
                   {i.name}
                   {i.grams != null && (
@@ -119,6 +120,34 @@ function Today({ state }: { state: State }) {
         </table>
       )}
     </section>
+  )
+}
+
+/**
+ * The photo a row was read from, beside the row it produced.
+ *
+ * Most numbers in this log are estimates, and an estimate you cannot re-examine
+ * has to be taken on faith. Weeks later the picture is the only way to tell
+ * whether "sauce 80 g" was a spoonful or a ladle, so it sits next to the line
+ * rather than somewhere else. Small by default; the full frame opens on click.
+ */
+function Shot({ id, alt }: { id: string; alt: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <img
+        className="shot"
+        src={`/api/photo/${id}?size=thumb`}
+        alt={alt}
+        loading="lazy"
+        onClick={() => setOpen(true)}
+      />
+      {open && (
+        <div className="lightbox" onClick={() => setOpen(false)} role="presentation">
+          <img src={`/api/photo/${id}`} alt={alt} />
+        </div>
+      )}
+    </>
   )
 }
 

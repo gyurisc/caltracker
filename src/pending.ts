@@ -24,8 +24,10 @@ export type PendingCard =
       chatId: number
       messageId: number
       proposed: VisionItem[]
+      /** The stored photo these rows came from, carried onto every row logged. */
+      photoId?: string | null
     }
-  | { kind: 'label'; label: VisionLabel }
+  | { kind: 'label'; label: VisionLabel; photoId?: string | null }
 
 export type Pending = PendingCard & { at: number }
 

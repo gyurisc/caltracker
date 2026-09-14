@@ -12,6 +12,8 @@ export type FoodRow = {
   kcal: number
   source: string
   provenance: 'measured' | 'reference'
+  /** The stored photo this row was read from, when it came from one. */
+  photo_path: string | null
 }
 
 export type WeekDay = {
