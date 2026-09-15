@@ -160,10 +160,17 @@ export function mealCard(items: VisionItem[], caveat: string | null): string {
     ...(missing.length
       ? ['', `${missing.length} not in your table — logged as an estimate, add later with /food`]
       : []),
-    '',
-    items.length === 1
-      ? 'weighed it? send the grams and I will correct this'
-      : 'weighed one? send e.g. `rice 180g` to correct that line',
+    // Only offered where it would change something. Asking whether a weight was
+    // weighed, when the weight came from the user in the first place, reads as
+    // the card not having listened.
+    ...(items.every((i) => i.gramsStated)
+      ? []
+      : [
+          '',
+          items.length === 1
+            ? 'weighed it? send the grams and I will correct this'
+            : 'weighed one? send e.g. `rice 180g` to correct that line',
+        ]),
   ].join('\n')
 }
 

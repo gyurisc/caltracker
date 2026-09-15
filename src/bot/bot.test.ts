@@ -479,3 +479,30 @@ describe('a photo whose caption already says what it is', () => {
     expect(logText('some plate of something', { photoId: 'x' }).ok).toBe(false)
   })
 })
+
+describe('the confirm card only asks for what it does not have', () => {
+  let mealCard: typeof import('./index.ts').mealCard
+  const item = (over: Partial<VisionItem>): VisionItem => ({
+    name: 'x', grams: 100, count: null, gramsStated: false, cooked: null,
+    proteinG: 1, carbsG: 1, fatG: 1, kcal: 19, kcalDisputed: false, ...over,
+  })
+
+  beforeAll(async () => { ;({ mealCard } = await import('./index.ts')) })
+
+  it('does not ask whether a weight was weighed when the user gave it', () => {
+    // "Dinnye 659 gramm" and the card replying "weighed it?" reads as the card
+    // not having listened.
+    const card = mealCard([item({ grams: 659, gramsStated: true })], null)
+    expect(card).not.toContain('weighed it?')
+    expect(card).toContain('(weight you gave)')
+  })
+
+  it('still offers the correction when the weight was guessed', () => {
+    expect(mealCard([item({})], null)).toContain('weighed it?')
+  })
+
+  it('offers it when only some of the rows carry a stated weight', () => {
+    const card = mealCard([item({ gramsStated: true }), item({ name: 'y' })], null)
+    expect(card).toContain('weighed one?')
+  })
+})
