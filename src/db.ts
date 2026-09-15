@@ -106,6 +106,21 @@ const eventsDDL = (db
   .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='events'")
   .get() as { sql?: string } | undefined)?.sql ?? ''
 
+/**
+ * WHOOP columns (PRD §18, v2 backlog — the 14-day gate is passed).
+ *
+ * All six are context, never inputs. §17 settles it: workout kcal is
+ * display-only. The calorie target stays on maintenance-by-activity, and the
+ * measured burn stays what `/trend` derives from intake against the weight
+ * trend. A heart-rate model must not quietly replace a measurement — if it read
+ * high, the deficit would vanish and nothing would say so.
+ */
+for (const col of ['sleep_h REAL', 'recovery INTEGER', 'strain REAL',
+                   'rhr INTEGER', 'hrv REAL', 'whoop_kcal INTEGER']) {
+  const name = col.split(' ')[0]!
+  if (!columns('days').includes(name)) db.exec(`ALTER TABLE days ADD COLUMN ${col}`)
+}
+
 if (!columns('days').includes('waist_cm')) {
   db.exec('ALTER TABLE days ADD COLUMN waist_cm REAL')
 }
@@ -138,6 +153,12 @@ export type DayRow = {
   activity: Activity
   weight_kg: number | null
   waist_cm: number | null
+  sleep_h: number | null
+  recovery: number | null
+  strain: number | null
+  rhr: number | null
+  hrv: number | null
+  whoop_kcal: number | null
   workout_name: string | null
   workout_minutes: number | null
   workout_kcal: number | null
@@ -252,6 +273,40 @@ export function getWaists(dates: string[]): Record<string, number | null> {
     .prepare(`SELECT date, waist_cm FROM days WHERE date IN (${q})`)
     .all(...dates) as { date: string; waist_cm: number | null }[]
   return Object.fromEntries(rows.map((r) => [r.date, r.waist_cm]))
+}
+
+export type WhoopDay = {
+  sleepH?: number | null
+  recovery?: number | null
+  strain?: number | null
+  rhr?: number | null
+  hrv?: number | null
+  whoopKcal?: number | null
+}
+
+/**
+ * Store a day's WHOOP figures. Only the fields present are written, so a later
+ * sync that has recovery but not yet sleep does not blank what is already there.
+ */
+export function setWhoopDay(date: string, w: WhoopDay): DayRow {
+  ensureDay(date)
+  const map: [keyof WhoopDay, string][] = [
+    ['sleepH', 'sleep_h'], ['recovery', 'recovery'], ['strain', 'strain'],
+    ['rhr', 'rhr'], ['hrv', 'hrv'], ['whoopKcal', 'whoop_kcal'],
+  ]
+  const sets = map.filter(([k]) => w[k] != null)
+  if (sets.length) {
+    db.prepare(`UPDATE days SET ${sets.map(([, c]) => `${c} = ?`).join(', ')} WHERE date = ?`)
+      .run(...sets.map(([k]) => w[k]), date)
+  }
+  return db.prepare('SELECT * FROM days WHERE date = ?').get(date) as DayRow
+}
+
+export function whoopDays(dates: string[]): Record<string, DayRow> {
+  if (dates.length === 0) return {}
+  const q = dates.map(() => '?').join(',')
+  const rows = db.prepare(`SELECT * FROM days WHERE date IN (${q})`).all(...dates) as DayRow[]
+  return Object.fromEntries(rows.map((r) => [r.date, r]))
 }
 
 /** Steps for a finished day. Context for reading the trend, not an input to it. */
