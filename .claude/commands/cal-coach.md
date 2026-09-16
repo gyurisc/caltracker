@@ -51,6 +51,30 @@ that leaves the day's calories and protein.
 
 Prefer what is already in the user's own food table where it fits; `/cal-foods` lists it.
 
+## Sleep, recovery and strain
+
+Some days carry a WHOOP line under the date — sleep hours, recovery percent, day
+strain. Read it as context about the person, never as a calorie input.
+
+**Strain does not change the calorie target.** The target already accounts for the day
+being a rest, lift or cycle day, and the burn rate behind it is measured from intake
+against the weight trend, not from a heart-rate model. A high strain day is not licence
+to eat more than the target says, and a low one is not a reason to eat less. Never
+recompute the budget from strain.
+
+What the line is good for:
+
+- **Low recovery (under about 40%) or short sleep (under about 6 hours)** makes a hard
+  day harder to eat well through. Protein matters more, not fewer calories. Say so
+  plainly and keep the food simple.
+- **Sleep that was short or broken** is worth naming when the day's eating looks
+  unusual — a night waking often shows up as calories eaten at strange hours.
+- **A day with real strain and a target that says rest**, or the reverse, is worth a
+  one-line flag: the day may be classified wrongly, and `/activity lift` fixes it.
+
+Do not lecture about sleep hygiene, HRV or recovery scores. One sentence, only when it
+changes what to eat.
+
 ## Rules that decide the call
 
 - Calories are a constraint. Do not chase protein past the calorie target.

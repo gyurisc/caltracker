@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bareFoodName, buildTable, mealTagFromClock, parseMessage } from './parse.ts'
+import { bareFoodName, buildTable, mealTagFromClock, parseMessage, SEED_TABLE } from './parse.ts'
 
 const at = (hhmm: string) => new Date(`2026-08-30T${hhmm}:00Z`)
 
@@ -153,8 +153,10 @@ describe('skyr', () => {
     expect(s!.kcal).toBe(247)
   })
 
-  it('still parses yogurt separately', () => {
-    expect(items('greek yogurt 150g')[0]!.name).toBe('yogurt')
+  it('still parses greek yogurt separately', () => {
+    // This asserted `yogurt` while one row held both foods at greek yoghurt's
+    // protein. It is its own row now, and the name it resolves to says which.
+    expect(items('greek yogurt 150g')[0]!.name).toBe('greek yogurt')
   })
 
   it('knows a pot is 170 g, not the generic 150', () => {
@@ -342,5 +344,32 @@ describe('meal tags', () => {
   it('takes an explicit meal word over the clock', () => {
     const [c] = items('dinner: steak 200g')
     expect(c!.mealTag).toBe('dinner')
+  })
+})
+
+describe('plain yoghurt and greek yoghurt are different foods', () => {
+  // One row carried both names at 11 g protein per 100 g. Greek yoghurt is
+  // about that; plain natural yoghurt is a third of it. The calories were
+  // nearly identical either way — 62 vs 63 — so nothing looked wrong while the
+  // protein, the number this log exists to hit, came out three times too high.
+  it('gives the bare word the plain figures', () => {
+    const r = parseMessage('yogurt 150g', new Date(), SEED_TABLE)
+    if (!r.ok) throw new Error('expected a log')
+    expect(r.items[0]!.name).toBe('yogurt')
+    expect(r.items[0]!.proteinG).toBeCloseTo(5.3, 1)
+  })
+
+  it('keeps the high-protein figures on the name that means them', () => {
+    const r = parseMessage('greek yogurt 150g', new Date(), SEED_TABLE)
+    if (!r.ok) throw new Error('expected a log')
+    expect(r.items[0]!.name).toBe('greek yogurt')
+    expect(r.items[0]!.proteinG).toBeCloseTo(16.5, 1)
+  })
+
+  it('resolves the longer name first, so `greek yogurt` is not read as `yogurt`', () => {
+    const r = parseMessage('greek yogurt 100g', new Date(), SEED_TABLE)
+    if (!r.ok) throw new Error('expected a log')
+    expect(r.items).toHaveLength(1)
+    expect(r.items[0]!.name).toBe('greek yogurt')
   })
 })

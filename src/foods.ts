@@ -113,10 +113,20 @@ export const SEED_FOODS: FoodEntry[] = [
     portions: { pot: 170, tub: 450, bowl: 200, cup: 200 },
     raw: { proteinG: 11, carbsG: 4, fatG: 0.2 } },
 
-  { key: 'yogurt', aliases: ['greek yogurt', 'yoghurt', 'yogurt', 'yopro', 'quark'],
-    basis: 'per100g', defaultGrams: 150, defaultState: 'raw',
+  // Two foods, not one. These carried a single row at 11 g protein per 100 g,
+  // which is greek yoghurt; plain natural yoghurt is a third of that. The
+  // calories are nearly identical either way, so nothing looked wrong while the
+  // protein — the number this log exists to hit — came out three times too high.
+  // `greek yogurt` beats `yogurt` on longest-alias-first, so both still resolve.
+  { key: 'greek yogurt', aliases: ['greek yogurt', 'gorog joghurt', 'görög joghurt', 'yopro', 'quark'],
+    basis: 'per100g', defaultGrams: 170, defaultState: 'raw',
     portions: { bowl: 200, cup: 200, pot: 150, tub: 500 },
     raw: { proteinG: 11, carbsG: 4, fatG: 0.2 } },
+
+  { key: 'yogurt', aliases: ['yoghurt', 'yogurt', 'joghurt', 'natur joghurt'],
+    basis: 'per100g', defaultGrams: 150, defaultState: 'raw',
+    portions: { bowl: 200, cup: 200, pot: 150, tub: 500 },
+    raw: { proteinG: 3.5, carbsG: 4.7, fatG: 3.3 } },
 
   { key: 'dark chocolate', aliases: ['dark chocolate', 'chocolate'],
     basis: 'per100g', defaultGrams: 25, defaultState: 'raw',
