@@ -118,6 +118,15 @@ export const SEED_FOODS: FoodEntry[] = [
   // calories are nearly identical either way, so nothing looked wrong while the
   // protein — the number this log exists to hit — came out three times too high.
   // `greek yogurt` beats `yogurt` on longest-alias-first, so both still resolve.
+  // Boiled flesh, no skin (USDA). Unlike rice, boiling barely moves a potato's
+  // figures — it takes on water rather than losing it — so this does not need
+  // `stateRequired`; raw and cooked are within about 15% of each other.
+  { key: 'burgonya', aliases: ['burgonya', 'potatoes', 'potato', 'krumpli', 'fott krumpli'],
+    basis: 'per100g', defaultGrams: 200, defaultState: 'cooked',
+    portions: { medium: 150, small: 90, large: 250 },
+    raw: { proteinG: 2.1, carbsG: 17.5, fatG: 0.1 },
+    cooked: { proteinG: 1.9, carbsG: 20.1, fatG: 0.1 } },
+
   { key: 'greek yogurt', aliases: ['greek yogurt', 'gorog joghurt', 'görög joghurt', 'yopro', 'quark'],
     basis: 'per100g', defaultGrams: 170, defaultState: 'raw',
     portions: { bowl: 200, cup: 200, pot: 150, tub: 500 },

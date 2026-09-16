@@ -373,3 +373,41 @@ describe('plain yoghurt and greek yoghurt are different foods', () => {
     expect(r.items[0]!.name).toBe('greek yogurt')
   })
 })
+
+describe('potato', () => {
+  const p = (text: string) => {
+    const r = parseMessage(text, new Date(), SEED_TABLE)
+    if (!r.ok) throw new Error(`refused: ${text}`)
+    return r.items[0]!
+  }
+
+  it('defaults to cooked, which is how it gets eaten', () => {
+    expect(p('burgonya 200g').cooked).toBe(true)
+    expect(Math.round(p('burgonya 200g').kcal)).toBe(178)
+  })
+
+  it('answers to the english and hungarian names alike', () => {
+    for (const name of ['burgonya', 'krumpli', 'potato', 'potatoes']) {
+      expect(p(`${name} 100g`).name).toBe('burgonya')
+    }
+  })
+
+  it('takes a raw weight when raw is said', () => {
+    // Boiling a potato barely moves its figures, so this is a small difference
+    // rather than the threefold one that makes rice refuse without a state.
+    expect(Math.round(p('burgonya 100g raw').kcal)).toBe(79)
+    expect(Math.round(p('burgonya 100g cooked').kcal)).toBe(89)
+  })
+
+  it('knows a medium potato is 150 g', () => {
+    expect(p('a medium burgonya').grams).toBe(150)
+  })
+
+  it('does not steal a neighbour\'s weight', () => {
+    const r = parseMessage('chicken 150g burgonya 200g', new Date(), SEED_TABLE)
+    if (!r.ok) throw new Error('expected a log')
+    expect(r.items.map((i) => [i.name, i.grams])).toEqual([
+      ['chicken', 150], ['burgonya', 200],
+    ])
+  })
+})
