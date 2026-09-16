@@ -166,6 +166,11 @@ function WeightTrend({ trend, goal }: { trend: TrendDay[]; goal: number }) {
   // not there. The latest reading and its movement are the whole story.
   const waistPoints = trend.filter((d) => d.waistCm != null) as (TrendDay & { waistCm: number })[]
   const waist = waistPoints.at(-1)
+  // WHOOP strain, averaged over the days that have it. Shown beside weight as
+  // one more piece of context — it is not a target and does not move one.
+  const strains = trend.filter((d) => d.strain != null).map((d) => d.strain!)
+  const strainAvg = strains.length ? strains.reduce((a, b) => a + b, 0) / strains.length : null
+
   const waistDelta =
     waist && waistPoints[0] && waistPoints.length > 1 ? waist.waistCm - waistPoints[0].waistCm : null
 
@@ -197,6 +202,7 @@ function WeightTrend({ trend, goal }: { trend: TrendDay[]; goal: number }) {
           )}
         </span>
         <span className="faint" style={{ fontSize: 11 }}>
+          {strainAvg != null && <>strain {strainAvg.toFixed(1)} avg · </>}
           {waist && <><b className="waist">{waist.waistCm} cm waist</b>{waistDelta != null && (
             <span className={waistDelta <= 0 ? 'green' : 'red'}> {waistDelta > 0 ? '+' : ''}{waistDelta.toFixed(1)}</span>
           )} · </>}

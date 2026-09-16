@@ -1,4 +1,5 @@
 import { serve } from '@hono/node-server'
+import { startSync as startWhoopSync } from './whoop.ts'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { existsSync } from 'node:fs'
 import { Hono } from 'hono'
@@ -48,6 +49,9 @@ process.on('uncaughtException', (err) => {
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(`[api]  http://localhost:${info.port}  ·  db ${DB_PATH}  ·  tz ${TZ}`)
 })
+
+// Context, on its own schedule. It touches no target — see src/whoop.ts.
+startWhoopSync()
 
 if (TELEGRAM_BOT_TOKEN && TELEGRAM_USER_ID) {
   const bot = createBot()

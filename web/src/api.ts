@@ -32,6 +32,10 @@ export type TrendDay = {
   weightKg: number | null
   /** Waist in cm. Measured weekly, so most days are null. */
   waistCm: number | null
+  /** WHOOP, when it has been synced. Context for the day, never a target input. */
+  strain: number | null
+  sleepH: number | null
+  recovery: number | null
   steps: number | null
   kcal: number
   proteinG: number

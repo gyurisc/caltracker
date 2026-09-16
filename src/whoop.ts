@@ -172,25 +172,40 @@ async function get(path: string, params: Record<string, string> = {}): Promise<u
 }
 
 /**
- * The local date a WHOOP record belongs to.
- *
- * A WHOOP cycle runs wake to wake, not midnight to midnight — the current one
- * started at 22:00Z and is still open. Asking "which cycles overlap this day"
- * therefore returns the same open cycle for every day it spans, and writing that
- * to each of them silently copies today's strain onto yesterday. A cycle belongs
- * to one day: the local date it started.
- *
- * `timezone_offset` is the member's offset at the time, which is what makes the
- * 22:00Z start land on the 15th rather than the 14th.
+ * The local date of an instant, using the member's own offset at the time —
+ * which is what makes a 22:00Z timestamp land on the next day in Amsterdam.
  */
-function localDateOf(instant: string, offset: string | null): string {
+function localDateOf(instant: string, offset: string | null, shiftMs = 0): string {
   const ms = Date.parse(instant)
   if (Number.isNaN(ms)) return ''
   const m = /^([+-])(\d{2}):(\d{2})$/.exec(offset ?? '')
-  const shift = m
+  const tz = m
     ? (m[1] === '-' ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) * 60_000
     : 0
-  return new Date(ms + shift).toISOString().slice(0, 10)
+  return new Date(ms + tz + shiftMs).toISOString().slice(0, 10)
+}
+
+/**
+ * Which day a cycle describes.
+ *
+ * A WHOOP cycle runs from one sleep onset to the next, so a cycle that starts on
+ * an evening covers that night and then the whole of the *following* day — its
+ * waking hours belong to tomorrow, not to the date it started on. Two cycles can
+ * therefore start on the same calendar date, which is exactly what happened
+ * here: one at 00:00 and one at 21:52 on the 15th, holding strain 13.9 and 4.0.
+ * Keying on the start date gave the 15th its own next morning.
+ *
+ * Twelve hours in is always inside the cycle's waking half, whether bedtime was
+ * before midnight or after it, so that is the hour that names the day.
+ */
+const CYCLE_MIDPOINT_MS = 12 * 60 * 60 * 1000
+
+export function cycleDate(c: Record<string, unknown>): string {
+  return localDateOf(
+    String(c.start ?? ''),
+    (c.timezone_offset as string) ?? null,
+    CYCLE_MIDPOINT_MS,
+  )
 }
 
 /** WHOOP caps `limit` at 25 and rejects the whole request above it. */
@@ -261,7 +276,7 @@ export async function readDay(date = localDate()): Promise<WhoopRaw> {
   const on = (r: Record<string, unknown>, field = 'start') =>
     localDateOf(String(r[field] ?? ''), (r.timezone_offset as string) ?? null) === date
 
-  const cycle = cycles?.find((c) => on(c))
+  const cycle = cycles?.find((c) => cycleDate(c) === date)
   const cycleScore = cycle?.score as Record<string, unknown> | undefined
   if (cycleScore) {
     out.strain = num(cycleScore.strain)
@@ -305,4 +320,64 @@ export async function readDay(date = localDate()): Promise<WhoopRaw> {
   }
 
   return out
+}
+
+/**
+ * Pull recent days and store them.
+ *
+ * Yesterday as well as today, always: a cycle runs wake to wake, so today's is
+ * still open and its strain is only the strain so far. Yesterday's closes and
+ * its recovery arrives some time the following morning, which means a day is
+ * not final until well after it ends. Re-reading is cheap; guessing is not.
+ */
+export async function syncRecent(days = 2): Promise<{ written: string[]; errors: string[] }> {
+  const { localDate: today, addDays } = await import('./config.ts')
+  const { setWhoopDay } = await import('./db.ts')
+
+  const written: string[] = []
+  const errors: string[] = []
+  for (let back = days - 1; back >= 0; back--) {
+    const date = addDays(today(), -back)
+    try {
+      const raw = await readDay(date)
+      setWhoopDay(date, raw)
+      errors.push(...raw.errors)
+      if (raw.strain != null || raw.sleepH != null || raw.recovery != null) written.push(date)
+    } catch (e) {
+      errors.push(`${date}: ${(e as Error).message}`)
+    }
+  }
+  return { written, errors: [...new Set(errors)] }
+}
+
+export const SYNC_EVERY_MS = 30 * 60 * 1000
+
+/**
+ * Background sync while the process lives. Half-hourly is well inside WHOOP's
+ * limits and far more often than the data changes — the point is that a day
+ * becomes complete on its own rather than when someone remembers to ask.
+ *
+ * Failures are logged and dropped: a WHOOP outage must not take the bot with it.
+ */
+export function startSync(): NodeJS.Timeout | null {
+  if (!configured()) {
+    console.log('[whoop] disabled — no WHOOP_CLIENT_ID / WHOOP_CLIENT_SECRET in .env')
+    return null
+  }
+
+  const tick = async () => {
+    if (!connected()) return
+    try {
+      const { written, errors } = await syncRecent()
+      if (errors.length) console.error('[whoop]', errors.join(' | '))
+      else if (written.length) console.log(`[whoop] synced ${written.join(', ')}`)
+    } catch (e) {
+      console.error('[whoop]', (e as Error).message)
+    }
+  }
+
+  void tick()
+  const timer = setInterval(tick, SYNC_EVERY_MS)
+  timer.unref()
+  return timer
 }

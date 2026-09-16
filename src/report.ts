@@ -37,8 +37,18 @@ export function todayReport(date = localDate()): string {
       })
     : ['Nothing logged yet.']
 
+  // WHOOP's figures ride on the header line, where the day is described — not
+  // among the totals, which are what the target is judged against. Strain is
+  // context; putting it beside the calories would invite reading it as one.
+  const whoop = [
+    day.strain == null ? '' : `strain ${day.strain.toFixed(1)}`,
+    day.sleep_h == null ? '' : `${day.sleep_h.toFixed(1)}h sleep`,
+    day.recovery == null ? '' : `${Math.round(day.recovery)}% rec`,
+  ].filter(Boolean).join(' · ')
+
   return [
     `${date} · ${activityLabel(day.activity)}${day.weight_kg ? ` · ${day.weight_kg} kg` : ''}`,
+    ...(whoop ? [whoop] : []),
     ...lines,
     '',
     todayLine(date),
