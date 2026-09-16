@@ -9,6 +9,7 @@ import { seedSampleData } from './seed.ts'
 import { isWithinUndoWindow, logText } from './service.ts'
 
 import { readPhoto as readStoredPhoto } from './photos.ts'
+import { authorizeUrl, configured as whoopConfigured, exchangeCode } from './whoop.ts'
 
 export const api = new Hono()
 
@@ -36,6 +37,30 @@ function dayView(day: DayRow) {
  *
  * Immutable: an id is a hash of the bytes, so a cached copy can never be stale.
  */
+/**
+ * WHOOP connect, in two hops through a browser. Open /api/whoop/start, approve,
+ * and the callback lands back here with a code to exchange.
+ */
+api.get('/whoop/start', (c) => {
+  if (!whoopConfigured()) return c.text('no WHOOP_CLIENT_ID / WHOOP_CLIENT_SECRET in .env', 400)
+  return c.redirect(authorizeUrl())
+})
+
+api.get('/whoop/callback', async (c) => {
+  const code = c.req.query('code')
+  const state = c.req.query('state') ?? ''
+  const denied = c.req.query('error')
+  if (denied) return c.text(`WHOOP said: ${denied}`, 400)
+  if (!code) return c.text('no code on that callback', 400)
+
+  try {
+    await exchangeCode(code, state)
+    return c.text('WHOOP connected. You can close this tab and run /whoop in Telegram.')
+  } catch (e) {
+    return c.text((e as Error).message, 400)
+  }
+})
+
 api.get('/photo/:id', (c) => {
   const size = c.req.query('size') === 'thumb' ? 'thumb' : 'full'
   const bytes = readStoredPhoto(c.req.param('id'), size)

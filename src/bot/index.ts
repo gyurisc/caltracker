@@ -1,8 +1,8 @@
 import { Bot, type Context, InlineKeyboard } from 'grammy'
-import { addDays, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
+import { addDays, PORT, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
 import {
   deleteFood, foodsOn, foodsWithName, getDay, getSettings, mostRecentFood, setActivity, setSteps,
-  setWaist, setWeight, totalsFor,
+  setWaist, setWeight, setWhoopDay, totalsFor,
 } from '../db.ts'
 import { formatFoodCommand, parseAliasCommand, parseFoodCommand } from '../foodcmd.ts'
 import { bareFoodName } from '../parse.ts'
@@ -11,6 +11,7 @@ import { activityLabel, deriveKcal, normalizeActivity, targetKcal } from '../nut
 import { round1 } from '../nutrition.ts'
 import {
   calibrationReport, n, todayLine, todayReport, visionReport, vocabReport, waistReport,
+  whoopReport,
 } from '../report.ts'
 import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
 import { addAlias, findFood, removeFood, saveFood, vocabTable } from '../vocab.ts'
@@ -19,6 +20,10 @@ import { parseCorrection, targetIndex } from '../correction.ts'
 import { prepareImage, readPrepared, type VisionItem } from '../vision.ts'
 import { deletePhoto, readPhoto as readStoredPhoto, savePhoto } from '../photos.ts'
 import { askCoach, forget, historyFor, remember } from '../coach.ts'
+import {
+  configured as whoopConfigured, connected as whoopConnected,
+  forgetTokens as forgetWhoop, readDay as readWhoopDay,
+} from '../whoop.ts'
 import { addFoods, logEvent } from '../db.ts'
 import { scaleTo } from '../parse.ts'
 
@@ -245,6 +250,7 @@ export function createBot(): Bot {
         '/week — last 7 days',
         '/coach — what to eat next, against today\'s log',
         '/waist 98 — waist in cm, weekly',
+        '/whoop — sleep, recovery and strain (context, not a target)',
         '/trend — measured burn rate vs your targets',
         '/vision — how well photo reading is doing',
         '/weight 74.2 — morning weigh-in',
@@ -444,6 +450,59 @@ export function createBot(): Bot {
   bot.command('newcoach', (ctx) => {
     forget(ctx.chat.id)
     return ctx.reply('coach thread cleared. /coach starts fresh.')
+  })
+
+  /**
+   * WHOOP is context, never a target input (PRD §17). The command shows what it
+   * saw and pulls new days in; it does not touch the calorie goal.
+   */
+  bot.command('whoop', async (ctx) => {
+    const arg = (ctx.match ?? '').toString().trim().toLowerCase()
+
+    if (!whoopConfigured()) {
+      return ctx.reply('no WHOOP_CLIENT_ID / WHOOP_CLIENT_SECRET in .env')
+    }
+    if (arg === 'connect' || !whoopConnected()) {
+      return ctx.reply(
+        [
+          whoopConnected() ? 'reconnecting WHOOP' : 'WHOOP is not connected yet',
+          '',
+          `open this on the mac: http://localhost:${PORT}/api/whoop/start`,
+        ].join('\n'),
+      )
+    }
+    if (arg === 'disconnect') {
+      forgetWhoop()
+      return ctx.reply('WHOOP disconnected. /whoop connect to link it again.')
+    }
+
+    if (arg === 'sync' || arg === '') {
+      // Yesterday as well as today: a night's sleep and its recovery only land
+      // once the night is over, so today alone would usually show neither.
+      const note = await ctx.reply('asking WHOOP…')
+      const days = [addDays(localDate(), -1), localDate()]
+      try {
+        const failures: string[] = []
+        for (const date of days) {
+          const raw = await readWhoopDay(date)
+          setWhoopDay(date, raw)
+          failures.push(...raw.errors)
+        }
+        // A read that failed and a day with nothing recorded look identical once
+        // the numbers are blank, so the failure has to be said out loud.
+        if (failures.length) {
+          return ctx.api.editMessageText(
+            note.chat.id, note.message_id,
+            [whoopReport(), '', 'some of that did not load:', ...new Set(failures)].join('\n'),
+          )
+        }
+      } catch (e) {
+        return ctx.api.editMessageText(note.chat.id, note.message_id, (e as Error).message)
+      }
+      return ctx.api.editMessageText(note.chat.id, note.message_id, whoopReport())
+    }
+
+    return ctx.reply('usage: /whoop · /whoop sync · /whoop connect · /whoop disconnect')
   })
 
   bot.command('waist', (ctx) => {

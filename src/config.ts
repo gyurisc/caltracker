@@ -25,6 +25,10 @@ export const DB_PATH = fromRoot(process.env.DB_PATH || './data/caltrack.db')
 export const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN?.trim() || ''
 export const TELEGRAM_USER_ID = Number(process.env.TELEGRAM_USER_ID || 0)
 export const XAI_API_KEY = process.env.XAI_API_KEY?.trim() || ''
+export const WHOOP_CLIENT_ID = process.env.WHOOP_CLIENT_ID?.trim() || ''
+export const WHOOP_CLIENT_SECRET = process.env.WHOOP_CLIENT_SECRET?.trim() || ''
+/** Must match the redirect registered on the WHOOP app, character for character. */
+export const WHOOP_REDIRECT = `http://localhost:${PORT}/api/whoop/callback`
 
 // All "today" logic goes through here. A local date string, never a UTC date.
 const dateFmt = new Intl.DateTimeFormat('en-CA', {

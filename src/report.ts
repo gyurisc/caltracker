@@ -4,7 +4,7 @@ import {
 } from './calibrate.ts'
 import {
   foodsOn, getDay, getSettings, getSteps, getWaists, getWeights, recentMisses, totalsFor,
-  visionCorrections, visionCounts,
+  visionCorrections, visionCounts, whoopDays,
 } from './db.ts'
 import { provenanceOf } from './foods.ts'
 import { matchTier, nearMatches } from './similar.ts'
@@ -328,5 +328,35 @@ export function waistReport(days = 180): string {
       : 'men: 94 cm and 102 cm are the usual reference marks — below both',
     'measure at the navel, on a breath out, before eating',
   )
+  return lines.join('\n')
+}
+
+/**
+ * What WHOOP saw. Shown beside the day, never folded into it: §17 makes workout
+ * kcal display-only, and the burn rate `/trend` reports stays the one derived
+ * from intake against the weight trend.
+ */
+export function whoopReport(days = 7): string {
+  const dates = lastDays(days)
+  const rows = whoopDays(dates)
+  const seen = dates.map((d) => rows[d]).filter((r): r is NonNullable<typeof r> =>
+    Boolean(r && (r.sleep_h != null || r.recovery != null || r.strain != null)))
+
+  if (seen.length === 0) return 'no WHOOP data yet — /whoop sync'
+
+  const lines = [`whoop · last ${days} days`, '']
+  for (const d of dates) {
+    const r = rows[d]
+    if (!r || (r.sleep_h == null && r.recovery == null && r.strain == null)) continue
+    lines.push(
+      `${d.slice(5)}  ` +
+      `${r.sleep_h == null ? '  — ' : `${r.sleep_h.toFixed(1)}h`} sleep · ` +
+      `${r.recovery == null ? ' —' : String(Math.round(r.recovery)).padStart(2)}% rec · ` +
+      `strain ${r.strain == null ? '—' : r.strain.toFixed(1)}` +
+      (r.whoop_kcal == null ? '' : ` · ${n(r.whoop_kcal)} kcal`),
+    )
+  }
+
+  lines.push('', 'context for reading the trend, not an input to it —', 'the target stays on maintenance by activity')
   return lines.join('\n')
 }
