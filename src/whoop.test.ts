@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { cycleDate } from './whoop.ts'
+import { beforeAll, describe, expect, it } from 'vitest'
+import { classify, cycleDate, type WhoopRaw } from './whoop.ts'
 
 const cycle = (start: string, offset = '+02:00') => ({ start, timezone_offset: offset })
 
@@ -34,5 +34,71 @@ describe('which day a WHOOP cycle describes', () => {
 
   it('returns nothing for an unparseable start', () => {
     expect(cycleDate(cycle('not a date'))).toBe('')
+  })
+})
+
+const raw = (over: Partial<WhoopRaw> = {}): WhoopRaw => ({
+  date: '2026-09-16', sleepH: null, recovery: null, strain: 10,
+  rhr: null, hrv: null, whoopKcal: null, workouts: [], errors: [], ...over,
+})
+const w = (sport: string, strain: number) => ({ sport, strain, kcal: null })
+
+describe('classifying a day from its workouts', () => {
+  it('calls a lifting session a lift day', () => {
+    expect(classify(raw({ workouts: [w('weightlifting', 9)] }))?.activity).toBe('lifting')
+  })
+
+  it('puts cardio in the cycling bucket', () => {
+    expect(classify(raw({ workouts: [w('mountain-biking', 7.9)] }))?.activity).toBe('cycling')
+    expect(classify(raw({ workouts: [w('running', 6.7)] }))?.activity).toBe('cycling')
+  })
+
+  it('takes the hardest session when there were several', () => {
+    const call = classify(raw({ workouts: [w('running', 6.7), w('weightlifting', 11)] }))
+    expect(call?.activity).toBe('lifting')
+  })
+
+  it('ignores a walk to the shops', () => {
+    // Strain 3 is a stroll, not a session, and must not lift the target.
+    expect(classify(raw({ workouts: [w('walking', 3)] }))?.activity).toBe('rest')
+  })
+
+  it('calls a day with no training a rest day', () => {
+    expect(classify(raw({ workouts: [] }))?.activity).toBe('rest')
+  })
+
+  it('says nothing at all when the sport is unknown', () => {
+    // Guessing a bucket would move the calorie target by hundreds of kcal on no
+    // evidence. Leaving the day untouched is the honest answer.
+    expect(classify(raw({ workouts: [w('surfing', 12)] }))).toBeNull()
+  })
+
+  it('says nothing when WHOOP has no cycle for the day', () => {
+    // An unworn band or a failed sync looks exactly like a rest day once the
+    // numbers are blank. Without this the target silently drops.
+    expect(classify(raw({ strain: null, workouts: [] }))).toBeNull()
+  })
+})
+
+describe('a hand-set day is left alone', () => {
+  let setActivity: typeof import('./db.ts').setActivity
+  let activityIsManual: typeof import('./db.ts').activityIsManual
+
+  beforeAll(async () => {
+    process.env.DB_PATH = './data/test-whoop.db'
+    ;({ setActivity, activityIsManual } = await import('./db.ts'))
+  })
+
+  it('marks a typed activity manual and a synced one not', () => {
+    setActivity('2026-09-15', 'lifting', 'manual')
+    expect(activityIsManual('2026-09-15')).toBe(true)
+
+    setActivity('2026-09-14', 'cycling', 'whoop')
+    expect(activityIsManual('2026-09-14')).toBe(false)
+  })
+
+  it('treats a day nobody has touched as not manual', () => {
+    // Which is what lets WHOOP classify it in the first place.
+    expect(activityIsManual('2026-01-01')).toBe(false)
   })
 })

@@ -330,11 +330,16 @@ export async function readDay(date = localDate()): Promise<WhoopRaw> {
  * its recovery arrives some time the following morning, which means a day is
  * not final until well after it ends. Re-reading is cheap; guessing is not.
  */
-export async function syncRecent(days = 2): Promise<{ written: string[]; errors: string[] }> {
+export async function syncRecent(
+  days = 2,
+): Promise<{ written: string[]; classified: string[]; errors: string[] }> {
   const { localDate: today, addDays } = await import('./config.ts')
   const { setWhoopDay } = await import('./db.ts')
 
+  const { activityIsManual, setActivity } = await import('./db.ts')
+
   const written: string[] = []
+  const classified: string[] = []
   const errors: string[] = []
   for (let back = days - 1; back >= 0; back--) {
     const date = addDays(today(), -back)
@@ -343,11 +348,19 @@ export async function syncRecent(days = 2): Promise<{ written: string[]; errors:
       setWhoopDay(date, raw)
       errors.push(...raw.errors)
       if (raw.strain != null || raw.sleepH != null || raw.recovery != null) written.push(date)
+
+      // A day set by hand is left alone. Undoing someone's own correction on a
+      // schedule is worse than never classifying the day at all.
+      const call = classify(raw)
+      if (call && !activityIsManual(date)) {
+        setActivity(date, call.activity, 'whoop')
+        classified.push(`${date} ${call.activity} (${call.why})`)
+      }
     } catch (e) {
       errors.push(`${date}: ${(e as Error).message}`)
     }
   }
-  return { written, errors: [...new Set(errors)] }
+  return { written, classified, errors: [...new Set(errors)] }
 }
 
 export const SYNC_EVERY_MS = 30 * 60 * 1000
@@ -368,9 +381,10 @@ export function startSync(): NodeJS.Timeout | null {
   const tick = async () => {
     if (!connected()) return
     try {
-      const { written, errors } = await syncRecent()
+      const { written, classified, errors } = await syncRecent()
       if (errors.length) console.error('[whoop]', errors.join(' | '))
       else if (written.length) console.log(`[whoop] synced ${written.join(', ')}`)
+      for (const line of classified) console.log(`[whoop] ${line}`)
     } catch (e) {
       console.error('[whoop]', (e as Error).message)
     }
@@ -380,4 +394,64 @@ export function startSync(): NodeJS.Timeout | null {
   const timer = setInterval(tick, SYNC_EVERY_MS)
   timer.unref()
   return timer
+}
+
+/**
+ * WHOOP's sport names, mapped onto the three activities this app has.
+ *
+ * The three buckets are really rest, a strength day and a cardio day; the names
+ * are historical. A sport that is not listed returns nothing rather than falling
+ * into a bucket, for the same reason `normalizeActivity()` returns null on
+ * unknown input: the activity decides the calorie target, and a wrong guess
+ * moves it by several hundred kcal with nothing to say so.
+ */
+const SPORT_ACTIVITY: Record<string, 'lifting' | 'cycling'> = {
+  'weightlifting': 'lifting',
+  'functional-fitness': 'lifting',
+  'powerlifting': 'lifting',
+  'strength-trainer': 'lifting',
+  'cycling': 'cycling',
+  'mountain-biking': 'cycling',
+  'spinning': 'cycling',
+  'running': 'cycling',
+  'jogging': 'cycling',
+  'rowing': 'cycling',
+  'swimming': 'cycling',
+  'elliptical': 'cycling',
+  'hiit': 'cycling',
+}
+
+/**
+ * Below this a "workout" is a walk to the shops, not a training session. WHOOP
+ * strain runs 0–21; yesterday's real sessions scored 7.9 and 6.7.
+ */
+export const WORKOUT_STRAIN_FLOOR = 5
+
+export type Classified =
+  | { activity: 'rest' | 'lifting' | 'cycling'; why: string }
+  | null
+
+/**
+ * What kind of day this was, or nothing when WHOOP cannot say.
+ *
+ * `hasCycle` is the guard that makes "no workouts" mean rest rather than "the
+ * band was on the charger". Without it a failed sync or an unworn day would
+ * silently drop the target by 300–800 kcal.
+ */
+export function classify(raw: WhoopRaw, hasCycle = raw.strain != null): Classified {
+  if (!hasCycle) return null
+
+  const real = raw.workouts.filter((w) => (w.strain ?? 0) >= WORKOUT_STRAIN_FLOOR)
+  if (real.length === 0) return { activity: 'rest', why: 'no training recorded' }
+
+  const hardest = real.reduce((a, b) => ((b.strain ?? 0) > (a.strain ?? 0) ? b : a))
+  const activity = SPORT_ACTIVITY[hardest.sport ?? '']
+  // An unrecognised sport leaves the day exactly as it was. Saying nothing is
+  // the honest answer; picking a bucket would move the target on a guess.
+  if (!activity) return null
+
+  return {
+    activity,
+    why: `${hardest.sport} · strain ${(hardest.strain ?? 0).toFixed(1)}`,
+  }
 }

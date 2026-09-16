@@ -41,6 +41,7 @@ export function todayReport(date = localDate()): string {
   // among the totals, which are what the target is judged against. Strain is
   // context; putting it beside the calories would invite reading it as one.
   const whoop = [
+    day.activity_source === 'whoop' ? 'set by whoop' : '',
     day.strain == null ? '' : `strain ${day.strain.toFixed(1)}`,
     day.sleep_h == null ? '' : `${day.sleep_h.toFixed(1)}h sleep`,
     day.recovery == null ? '' : `${Math.round(day.recovery)}% rec`,

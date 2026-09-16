@@ -2,7 +2,7 @@ import { Bot, type Context, InlineKeyboard } from 'grammy'
 import { addDays, PORT, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
 import {
   deleteFood, foodsOn, foodsWithName, getDay, getSettings, mostRecentFood, setActivity, setSteps,
-  setWaist, setWeight, setWhoopDay, totalsFor,
+  setWaist, setWeight, totalsFor,
 } from '../db.ts'
 import { formatFoodCommand, parseAliasCommand, parseFoodCommand } from '../foodcmd.ts'
 import { bareFoodName } from '../parse.ts'
@@ -22,7 +22,7 @@ import { deletePhoto, readPhoto as readStoredPhoto, savePhoto } from '../photos.
 import { askCoach, forget, historyFor, remember } from '../coach.ts'
 import {
   configured as whoopConfigured, connected as whoopConnected,
-  forgetTokens as forgetWhoop, readDay as readWhoopDay,
+  forgetTokens as forgetWhoop, syncRecent as syncWhoop,
 } from '../whoop.ts'
 import { addFoods, logEvent } from '../db.ts'
 import { scaleTo } from '../parse.ts'
@@ -482,11 +482,9 @@ export function createBot(): Bot {
       const note = await ctx.reply('asking WHOOP…')
       const days = [addDays(localDate(), -1), localDate()]
       try {
-        const failures: string[] = []
-        for (const date of days) {
-          const raw = await readWhoopDay(date)
-          setWhoopDay(date, raw)
-          failures.push(...raw.errors)
+        const { classified, errors: failures } = await syncWhoop(days.length)
+        if (classified.length) {
+          await ctx.reply(['whoop set the day:', ...classified].join('\n'))
         }
         // A read that failed and a day with nothing recorded look identical once
         // the numbers are blank, so the failure has to be said out loud.

@@ -121,6 +121,48 @@ for (const col of ['sleep_h REAL', 'recovery INTEGER', 'strain REAL',
   if (!columns('days').includes(name)) db.exec(`ALTER TABLE days ADD COLUMN ${col}`)
 }
 
+/**
+ * Who set the day's activity. A hand-typed `/activity rest` must survive the
+ * next sync — otherwise WHOOP quietly undoes a correction, which is worse than
+ * never having classified the day at all.
+ */
+if (!columns('days').includes('activity_source')) {
+  db.exec("ALTER TABLE days ADD COLUMN activity_source TEXT NOT NULL DEFAULT 'default'")
+}
+
+/**
+ * Days set by hand before `activity_source` existed read as 'default', so the
+ * first WHOOP sync overwrote them — it replaced a hand-typed `lifting` with its
+ * own reading of the same day. The event log holds the truth: an `activity`
+ * event with no `source` was typed by a person, so those days are marked manual
+ * and restored to what they were told to be.
+ */
+// Direct SQL, not getFlag/setFlag: this runs at module load, before their
+// prepared statements exist further down the file.
+const backfillKey = 'flag:activity_source_backfilled'
+const alreadyBackfilled = db
+  .prepare('SELECT value FROM settings WHERE key = ?')
+  .get(backfillKey) as { value?: string } | undefined
+
+if (!alreadyBackfilled) {
+  const rows = db
+    .prepare("SELECT ts, payload FROM events WHERE kind = 'activity' ORDER BY ts")
+    .all() as { ts: string; payload: string }[]
+
+  const byDate = new Map<string, string>()
+  for (const row of rows) {
+    const p = JSON.parse(row.payload) as { date?: string; activity?: string; source?: string }
+    if (!p.date || !p.activity || p.source) continue
+    byDate.set(p.date, p.activity)
+  }
+  const restore = db.prepare(
+    "UPDATE days SET activity = ?, activity_source = 'manual' WHERE date = ?",
+  )
+  for (const [date, activity] of byDate) restore.run(activity, date)
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+    .run(backfillKey, JSON.stringify(true))
+}
+
 if (!columns('days').includes('waist_cm')) {
   db.exec('ALTER TABLE days ADD COLUMN waist_cm REAL')
 }
@@ -153,6 +195,7 @@ export type DayRow = {
   activity: Activity
   weight_kg: number | null
   waist_cm: number | null
+  activity_source: 'default' | 'manual' | 'whoop'
   sleep_h: number | null
   recovery: number | null
   strain: number | null
@@ -236,11 +279,23 @@ export function ensureDay(date: string): DayRow {
   return db.prepare('SELECT * FROM days WHERE date = ?').get(date) as DayRow
 }
 
-export function setActivity(date: string, activity: Activity): DayRow {
+export function setActivity(
+  date: string,
+  activity: Activity,
+  source: 'manual' | 'whoop' = 'manual',
+): DayRow {
   ensureDay(date)
-  db.prepare('UPDATE days SET activity = ? WHERE date = ?').run(activity, date)
-  logEvent('activity', { date, activity })
+  db.prepare('UPDATE days SET activity = ?, activity_source = ? WHERE date = ?')
+    .run(activity, source, date)
+  logEvent('activity', { date, activity, source })
   return db.prepare('SELECT * FROM days WHERE date = ?').get(date) as DayRow
+}
+
+/** True when the day was set by hand, and WHOOP must therefore leave it alone. */
+export function activityIsManual(date: string): boolean {
+  const row = db.prepare('SELECT activity_source FROM days WHERE date = ?').get(date) as
+    { activity_source?: string } | undefined
+  return row?.activity_source === 'manual'
 }
 
 export function setWeight(date: string, kg: number): DayRow {
