@@ -24,6 +24,20 @@ pids() { lsof -t -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null; }
 LABEL="com.caltrack.server"
 DOMAIN="gui/$(id -u)"
 managed() { launchctl print "$DOMAIN/$LABEL" > /dev/null 2>&1; }
+job_pid() { launchctl print "$DOMAIN/$LABEL" 2>/dev/null | awk '/^\tpid = /{print $3; exit}'; }
+
+# launchd's pid is the `pnpm` wrapper; the listener is its grandchild through
+# tsx, so comparing the two directly never matches. Walk up instead.
+descends_from() {
+  local pid="$1" ancestor="$2" i
+  [ -n "$ancestor" ] || return 1
+  for i in $(seq 1 10); do
+    [ "$pid" = "$ancestor" ] && return 0
+    [ "$pid" = "1" ] || [ -z "$pid" ] && return 1
+    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+  done
+  return 1
+}
 
 stop() {
   local found
@@ -82,8 +96,9 @@ if managed; then
     restart)
       # Any listener launchd did not start would survive the kickstart and make
       # the new one die on EADDRINUSE, so it goes first.
+      owner="$(job_pid)"
       for pid in $(pids); do
-        if ! launchctl print "$DOMAIN/$LABEL" 2>/dev/null | grep -q "pid = $pid"; then
+        if ! descends_from "$pid" "$owner"; then
           echo "killing unmanaged listener $pid on :$PORT"
           kill "$pid" 2>/dev/null; sleep 1
           kill -9 "$pid" 2>/dev/null || true
