@@ -5,7 +5,6 @@ import {
   saveSettings, setActivity, setWeight, totalsFor, type DayRow,
 } from './db.ts'
 import { activityLabel, normalizeActivity, targetKcal, type Activity } from './nutrition.ts'
-import { seedSampleData } from './seed.ts'
 import { isWithinUndoWindow, logText } from './service.ts'
 
 import { readPhoto as readStoredPhoto } from './photos.ts'
@@ -179,4 +178,8 @@ api.post('/settings', async (c) => {
   return c.json({ settings: saveSettings(patch) })
 })
 
-api.post('/seed', (c) => c.json({ rows: seedSampleData() }))
+// `POST /api/seed` used to live here. It called seedSampleData() with no flag
+// check, so one request put 125 demo rows into a log that had been deliberately
+// wiped — which is exactly what happened while testing the access rules. Seeding
+// is a first-boot concern and a `pnpm seed` concern; it has no business on a
+// port. `pnpm seed:wipe` is the way back if it ever runs again.

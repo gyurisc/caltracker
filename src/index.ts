@@ -8,8 +8,35 @@ import { getFlag, setFlag } from './db.ts'
 import { createBot } from './bot/index.ts'
 import { DB_PATH, PORT, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, TZ, fromRoot, localDate } from './config.ts'
 import { seedSampleData } from './seed.ts'
+import { mayReach } from './access.ts'
+import { statsPage } from './stats.ts'
 
 const app = new Hono()
+
+/**
+ * The public surface is one server-rendered page and the WHOOP round trip.
+ * Everything else — the dashboard, `/api/state`, every mutating route — answers
+ * only to the local network or an SSH tunnel. See src/access.ts for why one
+ * address rule is right on both the Mac and a VPS.
+ *
+ * This runs before any route so nothing added later is exposed by forgetting.
+ */
+app.use('*', async (c, next) => {
+  // @hono/node-server hangs the raw request off c.env. `x-forwarded-for` is
+  // read only as a fallback, and is itself untrusted — a reverse proxy in front
+  // of this must be the one setting it, never the caller.
+  const env = c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined
+  const remote = env?.incoming?.socket?.remoteAddress
+    ?? c.req.header('x-forwarded-for')?.split(',')[0]
+
+  if (mayReach(new URL(c.req.url).pathname, remote)) return next()
+
+  // 404 rather than 403: a refusal that admits the route exists is an invitation.
+  return c.text('not found', 404)
+})
+
+// The public page. Rendered here, so there is no endpoint behind it to find.
+app.get('/stats', (c) => c.html(statsPage()))
 
 // API first, so the SPA fallback below can never shadow it.
 app.route('/api', api)
