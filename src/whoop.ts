@@ -196,7 +196,7 @@ export async function accessToken(): Promise<string> {
   } catch (e) {
     // Only a refusal of the grant itself clears it. Everything else keeps the
     // refresh token and fails this attempt: the next sync is half an hour away,
-    // and a reconnect needs a browser on the machine at home.
+    // and a reconnect needs a browser pointed at whichever host this runs on.
     if (e instanceof GrantRejected) {
       forgetTokens()
       throw new Error(`WHOOP refused the grant, reconnect with /whoop connect (${e.message})`)
@@ -426,13 +426,13 @@ export function startSync(notify?: (text: string) => void): NodeJS.Timeout | nul
   const tick = async () => {
     if (!connected()) {
       // Once per disconnection, not once per process. A process-local flag
-      // looked right and was not: launchd restarts, and every restart was a
-      // fresh notification about something only a browser at home can fix.
-      // Reconnecting has to be possible days later without being nagged daily.
+      // looked right and was not: launchd restarts, and every restart sent
+      // another notice about something that needs a browser pointed at this
+      // host — which may be days away. One notice is the whole budget.
       if (!getFlag('whoop_disconnect_notified')) {
         setFlag('whoop_disconnect_notified', true)
         console.log('[whoop] not connected — /whoop connect')
-        notify?.('WHOOP is not connected. /whoop connect when you are at the mac.')
+        notify?.('WHOOP is not connected. /whoop connect to link it again.')
       }
       return
     }
