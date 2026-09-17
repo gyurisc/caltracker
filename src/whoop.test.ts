@@ -129,3 +129,41 @@ describe('what costs the grant and what does not', () => {
       .rejects.toBeInstanceOf(GrantRejected)
   })
 })
+
+describe('the disconnect notice', () => {
+  let getFlag: typeof import('./db.ts').getFlag
+  let setFlag: typeof import('./db.ts').setFlag
+  let startSync: typeof import('./whoop.ts').startSync
+
+  beforeAll(async () => {
+    process.env.DB_PATH = './data/test-whoop.db'
+    ;({ getFlag, setFlag } = await import('./db.ts'))
+    ;({ startSync } = await import('./whoop.ts'))
+  })
+
+  it('fires once per disconnection, and survives a restart', async () => {
+    // A process-local flag looked right and was not: launchd restarts the
+    // process, so every restart sent another notice about something only a
+    // browser at home can fix — while the person was away for two days.
+    setFlag('whoop_disconnect_notified', null)
+    setFlag('whoop_tokens', null)
+
+    const sent: string[] = []
+    const notify = (t: string) => { sent.push(t) }
+
+    // Two separate "processes", each starting a sync.
+    startSync(notify)
+    await new Promise((r) => setTimeout(r, 10))
+    startSync(notify)
+    await new Promise((r) => setTimeout(r, 10))
+
+    expect(sent.length).toBeLessThanOrEqual(1)
+    expect(getFlag('whoop_disconnect_notified')).toBe(true)
+  })
+
+  it('re-arms once a grant is stored again', async () => {
+    setFlag('whoop_disconnect_notified', true)
+    setFlag('whoop_disconnect_notified', null)
+    expect(getFlag('whoop_disconnect_notified')).toBeFalsy()
+  })
+})

@@ -163,6 +163,8 @@ export async function exchangeCode(code: string, state: string): Promise<Tokens>
     redirect_uri: WHOOP_REDIRECT,
   }))
   setFlag('whoop_tokens', tokens)
+  // A fresh grant re-arms the one notification the next disconnection gets.
+  setFlag('whoop_disconnect_notified', null)
   return tokens
 }
 
@@ -421,20 +423,19 @@ export function startSync(notify?: (text: string) => void): NodeJS.Timeout | nul
     return null
   }
 
-  // Announced once per process, not every half hour. A grant that quietly
-  // stopped working is how this went unnoticed for two days.
-  let toldAboutDisconnect = false
-
   const tick = async () => {
     if (!connected()) {
-      if (!toldAboutDisconnect) {
-        toldAboutDisconnect = true
+      // Once per disconnection, not once per process. A process-local flag
+      // looked right and was not: launchd restarts, and every restart was a
+      // fresh notification about something only a browser at home can fix.
+      // Reconnecting has to be possible days later without being nagged daily.
+      if (!getFlag('whoop_disconnect_notified')) {
+        setFlag('whoop_disconnect_notified', true)
         console.log('[whoop] not connected — /whoop connect')
-        notify?.('WHOOP is not connected. /whoop connect to link it again.')
+        notify?.('WHOOP is not connected. /whoop connect when you are at the mac.')
       }
       return
     }
-    toldAboutDisconnect = false
     try {
       const { written, classified, errors } = await syncRecent()
       if (errors.length) console.error('[whoop]', errors.join(' | '))
