@@ -50,9 +50,6 @@ serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(`[api]  http://localhost:${info.port}  ·  db ${DB_PATH}  ·  tz ${TZ}`)
 })
 
-// Context, on its own schedule. It touches no target — see src/whoop.ts.
-startWhoopSync()
-
 if (TELEGRAM_BOT_TOKEN && TELEGRAM_USER_ID) {
   const bot = createBot()
   bot.start({
@@ -62,6 +59,14 @@ if (TELEGRAM_BOT_TOKEN && TELEGRAM_USER_ID) {
   const stop = () => { void bot.stop() }
   process.once('SIGINT', stop)
   process.once('SIGTERM', stop)
+
+  // Context, on its own schedule. It touches no target — see src/whoop.ts.
+  // It gets a way to speak because a grant that silently stopped working is
+  // only discovered days later, by wondering where the numbers went.
+  startWhoopSync((text) => {
+    void bot.api.sendMessage(TELEGRAM_USER_ID, text).catch(() => {})
+  })
 } else {
   console.log('[bot]  disabled — set TELEGRAM_BOT_TOKEN and TELEGRAM_USER_ID in .env')
+  startWhoopSync()
 }

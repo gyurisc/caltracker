@@ -16,6 +16,15 @@ LOG="$ROOT/data/caltrack.log"
 
 pids() { lsof -t -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null; }
 
+# When launchd owns the job, starting our own process creates an orphan it can
+# never manage: the orphan holds the port, every launchd start dies on
+# EADDRINUSE, and KeepAlive turns that into a permanent loop. One of those ran
+# for a day and wrote 8,473 failures into this log. So if the job is installed,
+# every verb goes through launchd.
+LABEL="com.caltrack.server"
+DOMAIN="gui/$(id -u)"
+managed() { launchctl print "$DOMAIN/$LABEL" > /dev/null 2>&1; }
+
 stop() {
   local found
   found="$(pids)"
@@ -43,7 +52,9 @@ start() {
   echo "starting…"
   # caffeinate -s keeps the Mac awake so polling survives; nohup outlives this shell.
   # </dev/null and disown detach it, or `pnpm restart` blocks until the server exits.
-  nohup caffeinate -s pnpm start < /dev/null > "$LOG" 2>&1 &
+  # Append, never truncate: launchd writes here too, and `>` has already eaten
+  # the only copy of a failure worth reading.
+  nohup caffeinate -s pnpm start < /dev/null >> "$LOG" 2>&1 &
   disown $! 2>/dev/null || true
   for _ in $(seq 1 40); do
     if curl -fsS -m 1 "http://localhost:$PORT/health" > /dev/null 2>&1; then
@@ -57,6 +68,44 @@ start() {
   tail -5 "$LOG" >&2
   exit 1
 }
+
+if managed; then
+  case "${1:-restart}" in
+    stop)
+      echo "stopping $LABEL via launchd"
+      launchctl kill SIGTERM "$DOMAIN/$LABEL" 2>/dev/null || true
+      ;;
+    status)
+      launchctl print "$DOMAIN/$LABEL" 2>/dev/null | grep -E '^\s+(state|pid|last exit code) ' || true
+      curl -fsS -m 1 "http://localhost:$PORT/health" 2>/dev/null && echo
+      ;;
+    restart)
+      # Any listener launchd did not start would survive the kickstart and make
+      # the new one die on EADDRINUSE, so it goes first.
+      for pid in $(pids); do
+        if ! launchctl print "$DOMAIN/$LABEL" 2>/dev/null | grep -q "pid = $pid"; then
+          echo "killing unmanaged listener $pid on :$PORT"
+          kill "$pid" 2>/dev/null; sleep 1
+          kill -9 "$pid" 2>/dev/null || true
+        fi
+      done
+      echo "restarting $LABEL via launchd"
+      launchctl kickstart -k "$DOMAIN/$LABEL"
+      for _ in $(seq 1 40); do
+        if curl -fsS -m 1 "http://localhost:$PORT/health" > /dev/null 2>&1; then
+          echo "up on :$PORT"
+          exit 0
+        fi
+        sleep 0.25
+      done
+      echo "did not come up in 10s — last lines of $LOG:" >&2
+      tail -5 "$LOG" >&2
+      exit 1
+      ;;
+    *) echo "usage: scripts/restart.sh [restart|stop|status]" >&2; exit 2 ;;
+  esac
+  exit 0
+fi
 
 case "${1:-restart}" in
   stop) stop ;;

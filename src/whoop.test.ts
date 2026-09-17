@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest'
-import { classify, cycleDate, type WhoopRaw } from './whoop.ts'
+import { classify, cycleDate, exchangeForTest, GrantRejected, type WhoopRaw } from './whoop.ts'
 
 const cycle = (start: string, offset = '+02:00') => ({ start, timezone_offset: offset })
 
@@ -100,5 +100,32 @@ describe('a hand-set day is left alone', () => {
   it('treats a day nobody has touched as not manual', () => {
     // Which is what lets WHOOP classify it in the first place.
     expect(activityIsManual('2026-01-01')).toBe(false)
+  })
+})
+
+describe('what costs the grant and what does not', () => {
+  // The refresh token is the whole integration: without it, reconnecting needs
+  // a browser on the machine at home. Only WHOOP saying the grant is dead may
+  // clear it — a bad minute on the network must not.
+  it('treats 400 and 401 as the grant being refused', () => {
+    expect(new GrantRejected('x')).toBeInstanceOf(Error)
+  })
+
+  it('keeps the existing refresh token when a refresh returns none', async () => {
+    // Requiring a fresh refresh_token on every refresh is what disconnected
+    // this an hour after it was linked. Plenty of providers return only an
+    // access token and leave the existing refresh token valid.
+    const kept = 'the-original-refresh-token'
+    const tokens = await exchangeForTest(
+      { access_token: 'new-access', expires_in: 3600 },
+      kept,
+    )
+    expect(tokens.refresh).toBe(kept)
+    expect(tokens.access).toBe('new-access')
+  })
+
+  it('refuses when there is no refresh token to keep either', async () => {
+    await expect(exchangeForTest({ access_token: 'a', expires_in: 3600 }, null))
+      .rejects.toBeInstanceOf(GrantRejected)
   })
 })

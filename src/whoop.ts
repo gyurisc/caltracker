@@ -85,7 +85,18 @@ export function authorizeUrl(): string {
   return `${AUTH}?${q}`
 }
 
-async function postForm(body: URLSearchParams): Promise<Tokens> {
+/**
+ * A refusal WHOOP will repeat no matter how many times it is asked — the grant
+ * is genuinely dead and only a browser can fix it. Anything else (a timeout, a
+ * dropped packet, a 500, a captive portal) is temporary and must not cost the
+ * refresh token, because losing it means a trip to a laptop at home.
+ */
+export class GrantRejected extends Error {}
+
+async function postForm(
+  body: URLSearchParams,
+  keepRefresh: string | null = null,
+): Promise<Tokens> {
   const res = await fetch(TOKEN, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -93,7 +104,13 @@ async function postForm(body: URLSearchParams): Promise<Tokens> {
     signal: AbortSignal.timeout(TIMEOUT_MS),
   })
   const text = await res.text()
-  if (!res.ok) throw new Error(`WHOOP token ${res.status}: ${text.slice(0, 200)}`)
+  if (!res.ok) {
+    // 400 and 401 are WHOOP saying the grant itself is no good. A 5xx is WHOOP
+    // having a bad minute, and deserves another try rather than a reconnect.
+    const fatal = res.status === 400 || res.status === 401
+    const message = `WHOOP token ${res.status}: ${text.slice(0, 200)}`
+    throw fatal ? new GrantRejected(message) : new Error(message)
+  }
 
   const json = JSON.parse(text) as {
     access_token?: string
@@ -101,16 +118,35 @@ async function postForm(body: URLSearchParams): Promise<Tokens> {
     expires_in?: number
   }
   if (!json.access_token) throw new Error('WHOOP returned no access token')
-  if (!json.refresh_token) {
-    // Without this the grant lasts an hour and the sync needs a browser every
-    // time. Better to fail loudly here than to look connected and quietly stop.
-    throw new Error('WHOOP returned no refresh token — the `offline` scope was not granted')
+
+  // A refresh does not have to return a new refresh token; plenty of providers
+  // return only an access token and leave the existing one valid. Requiring one
+  // here is what disconnected this integration an hour after it was linked.
+  const refresh = json.refresh_token ?? keepRefresh
+  if (!refresh) {
+    throw new GrantRejected('WHOOP returned no refresh token — the `offline` scope was not granted')
   }
+
   return {
     access: json.access_token,
-    refresh: json.refresh_token,
+    refresh,
     // A minute of slack, so a token is never used in the second it expires.
     expiresAt: Date.now() + ((json.expires_in ?? 3600) - 60) * 1000,
+  }
+}
+
+/** Tests only: drives the token-response handling without a network call. */
+export async function exchangeForTest(
+  body: Record<string, unknown>,
+  keepRefresh: string | null,
+): Promise<Tokens> {
+  const original = globalThis.fetch
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify(body), { status: 200 })) as typeof fetch
+  try {
+    return await postForm(new URLSearchParams(), keepRefresh)
+  } finally {
+    globalThis.fetch = original
   }
 }
 
@@ -143,20 +179,27 @@ export async function accessToken(): Promise<string> {
   if (Date.now() < tokens.expiresAt) return tokens.access
 
   try {
-    const next = await postForm(new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: tokens.refresh,
-      client_id: WHOOP_CLIENT_ID,
-      client_secret: WHOOP_CLIENT_SECRET,
-      scope: 'offline',
-    }))
+    const next = await postForm(
+      new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: tokens.refresh,
+        client_id: WHOOP_CLIENT_ID,
+        client_secret: WHOOP_CLIENT_SECRET,
+        scope: 'offline',
+      }),
+      tokens.refresh,
+    )
     setFlag('whoop_tokens', next)
     return next.access
   } catch (e) {
-    // A refresh WHOOP refuses will refuse again. Clearing it means the next
-    // command says "reconnect" instead of failing the same way forever.
-    forgetTokens()
-    throw new Error(`WHOOP refresh failed, reconnect with /whoop connect (${(e as Error).message})`)
+    // Only a refusal of the grant itself clears it. Everything else keeps the
+    // refresh token and fails this attempt: the next sync is half an hour away,
+    // and a reconnect needs a browser on the machine at home.
+    if (e instanceof GrantRejected) {
+      forgetTokens()
+      throw new Error(`WHOOP refused the grant, reconnect with /whoop connect (${e.message})`)
+    }
+    throw new Error(`WHOOP refresh failed, will retry (${(e as Error).message})`)
   }
 }
 
@@ -372,14 +415,26 @@ export const SYNC_EVERY_MS = 30 * 60 * 1000
  *
  * Failures are logged and dropped: a WHOOP outage must not take the bot with it.
  */
-export function startSync(): NodeJS.Timeout | null {
+export function startSync(notify?: (text: string) => void): NodeJS.Timeout | null {
   if (!configured()) {
     console.log('[whoop] disabled — no WHOOP_CLIENT_ID / WHOOP_CLIENT_SECRET in .env')
     return null
   }
 
+  // Announced once per process, not every half hour. A grant that quietly
+  // stopped working is how this went unnoticed for two days.
+  let toldAboutDisconnect = false
+
   const tick = async () => {
-    if (!connected()) return
+    if (!connected()) {
+      if (!toldAboutDisconnect) {
+        toldAboutDisconnect = true
+        console.log('[whoop] not connected — /whoop connect')
+        notify?.('WHOOP is not connected. /whoop connect to link it again.')
+      }
+      return
+    }
+    toldAboutDisconnect = false
     try {
       const { written, classified, errors } = await syncRecent()
       if (errors.length) console.error('[whoop]', errors.join(' | '))
@@ -387,6 +442,10 @@ export function startSync(): NodeJS.Timeout | null {
       for (const line of classified) console.log(`[whoop] ${line}`)
     } catch (e) {
       console.error('[whoop]', (e as Error).message)
+      // Only a refused grant needs a person; a failed refresh retries itself.
+      if (e instanceof GrantRejected || !connected()) {
+        notify?.(`WHOOP disconnected: ${(e as Error).message}`)
+      }
     }
   }
 
