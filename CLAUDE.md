@@ -34,6 +34,11 @@ A single-user calorie log. `docs/PRD.md` is the spec and is authoritative — §
 non-goals that should not be built, and §15 locks the stack (no Next.js, Postgres,
 Docker, webhooks, Nginx, or auth).
 
+`docs/deploy.md` is the plan for moving this to a VPS, and carries the security
+model: what `/stats` publishes, why everything else is loopback-and-LAN only, and
+the two WHOOP guards that are designed but not yet built. Read it before touching
+`src/access.ts` or adding a route.
+
 ## Architecture
 
 **One Node process, two surfaces.** `src/index.ts` starts Hono and grammY polling
