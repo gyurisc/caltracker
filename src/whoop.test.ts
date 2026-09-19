@@ -167,3 +167,62 @@ describe('the disconnect notice', () => {
     expect(getFlag('whoop_disconnect_notified')).toBeFalsy()
   })
 })
+
+describe('refreshing under concurrency', () => {
+  let setFlag: typeof import('./db.ts').setFlag
+  let accessToken: typeof import('./whoop.ts').accessToken
+
+  beforeAll(async () => {
+    process.env.DB_PATH = './data/test-whoop2.db'
+    process.env.WHOOP_CLIENT_ID = 'id'
+    process.env.WHOOP_CLIENT_SECRET = 'secret'
+    ;({ setFlag } = await import('./db.ts'))
+    ;({ accessToken } = await import('./whoop.ts'))
+  })
+
+  it('exchanges once however many callers ask at the same moment', async () => {
+    // readDay fires four requests in parallel. WHOOP rotates the refresh token
+    // on use, so four simultaneous exchanges mean three of them present a
+    // consumed token and are refused — which destroyed a live grant twice.
+    setFlag('whoop_tokens', { access: 'old', refresh: 'r1', expiresAt: Date.now() - 1000 })
+
+    let calls = 0
+    const original = globalThis.fetch
+    globalThis.fetch = (async () => {
+      calls++
+      await new Promise((r) => setTimeout(r, 20))
+      return new Response(
+        JSON.stringify({ access_token: 'fresh', refresh_token: 'r2', expires_in: 3600 }),
+        { status: 200 },
+      )
+    }) as typeof fetch
+
+    try {
+      const all = await Promise.all([accessToken(), accessToken(), accessToken(), accessToken()])
+      expect(calls).toBe(1)
+      expect(all).toEqual(['fresh', 'fresh', 'fresh', 'fresh'])
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+
+  it('keeps the grant when a 400 arrives after somebody else rotated it', async () => {
+    // The race the single-flight cannot cover: another process, or a restart
+    // mid-flight. A stored refresh token that has moved on is proof the grant
+    // is alive, whatever this particular attempt was told.
+    setFlag('whoop_tokens', { access: 'stale', refresh: 'consumed', expiresAt: Date.now() - 1000 })
+
+    const original = globalThis.fetch
+    globalThis.fetch = (async () => {
+      // Simulate the winner having stored a new pair before this one fails.
+      setFlag('whoop_tokens', { access: 'winner', refresh: 'rotated', expiresAt: Date.now() + 3.6e6 })
+      return new Response(JSON.stringify({ error: 'invalid_request' }), { status: 400 })
+    }) as typeof fetch
+
+    try {
+      await expect(accessToken()).resolves.toBe('winner')
+    } finally {
+      globalThis.fetch = original
+    }
+  })
+})

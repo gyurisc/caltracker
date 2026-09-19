@@ -175,11 +175,30 @@ export async function exchangeCode(code: string, state: string): Promise<Tokens>
  * before it is used — dropping it would leave the grant unrecoverable without a
  * browser.
  */
+/**
+ * One refresh at a time, shared by everyone waiting.
+ *
+ * `readDay` fires four requests in parallel, so when the access token expires
+ * all four reach for a new one at the same instant. WHOOP rotates the refresh
+ * token on use: the first exchange succeeds and invalidates the old token, and
+ * the other three then present a consumed one and are told 400 invalid_request.
+ * Treating that as "the grant is dead" destroyed a working connection twice —
+ * the refusal was real, but it was a refusal of a request this code should
+ * never have sent.
+ */
+let inFlight: Promise<string> | null = null
+
 export async function accessToken(): Promise<string> {
   const tokens = storedTokens()
   if (!tokens) throw new Error('WHOOP is not connected — /whoop connect')
   if (Date.now() < tokens.expiresAt) return tokens.access
 
+  if (inFlight) return inFlight
+  inFlight = refreshOnce(tokens).finally(() => { inFlight = null })
+  return inFlight
+}
+
+async function refreshOnce(tokens: Tokens): Promise<string> {
   try {
     const next = await postForm(
       new URLSearchParams({
@@ -198,6 +217,14 @@ export async function accessToken(): Promise<string> {
     // refresh token and fails this attempt: the next sync is half an hour away,
     // and a reconnect needs a browser pointed at whichever host this runs on.
     if (e instanceof GrantRejected) {
+      // Second guard, in case a refresh slips past the single-flight (another
+      // process, a restart mid-flight): if the stored refresh token is no longer
+      // the one this attempt used, somebody else already rotated it
+      // successfully, and this refusal is a race rather than a dead grant.
+      const current = storedTokens()
+      if (current && current.refresh !== tokens.refresh) {
+        return current.access
+      }
       forgetTokens()
       throw new Error(`WHOOP refused the grant, reconnect with /whoop connect (${e.message})`)
     }
