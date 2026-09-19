@@ -506,3 +506,34 @@ describe('the confirm card only asks for what it does not have', () => {
     expect(card).toContain('weighed one?')
   })
 })
+
+describe('the card says when it ignored the name you typed', () => {
+  let mealCard: typeof import('./index.ts').mealCard
+  const item = (name: string): VisionItem => ({
+    name, grams: 78, count: null, gramsStated: true, cooked: null,
+    proteinG: 6, carbsG: 34, fatG: 16, kcal: 315, kcalDisputed: false,
+  })
+
+  beforeAll(async () => { ;({ mealCard } = await import('./index.ts')) })
+
+  it('flags a name the model replaced with a different one', () => {
+    // `Kifli 78 gramm` came back as croissant — bread dough logged against a
+    // butter pastry at 404 kcal/100 g, resolving confidently against the wrong
+    // food because croissant happened to be in the table.
+    const card = mealCard([item('croissant')], null, 'Kifli 78 gramm')
+    expect(card).toContain('you wrote "kifli"')
+  })
+
+  it('says nothing when the model used the name', () => {
+    expect(mealCard([item('kifli')], null, 'Kifli 78 gramm')).not.toContain('you wrote')
+  })
+
+  it('ignores the weight and its unit', () => {
+    // "78" and "gramm" are not food names and must not trigger the warning.
+    expect(mealCard([item('kifli')], null, 'kifli 78 gramm')).not.toContain('you wrote')
+  })
+
+  it('says nothing when there was no caption at all', () => {
+    expect(mealCard([item('croissant')], null, '')).not.toContain('you wrote')
+  })
+})

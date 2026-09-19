@@ -121,6 +121,14 @@ export const SEED_FOODS: FoodEntry[] = [
   // Boiled flesh, no skin (USDA). Unlike rice, boiling barely moves a potato's
   // figures — it takes on water rather than losing it — so this does not need
   // `stateRequired`; raw and cooked are within about 15% of each other.
+  // A kifli is bread dough; a croissant is laminated with butter. They look
+  // alike enough that a photo of one reads as the other, and the croissant row
+  // is 404 kcal/100 g against this 278 — so the resemblance was worth 95 kcal
+  // on a 78 g roll before this existed.
+  { key: 'kifli', aliases: ['kiflik', 'kifli', 'zsemle', 'bread roll'],
+    basis: 'per100g', defaultGrams: 50, defaultState: 'raw',
+    raw: { proteinG: 9, carbsG: 55, fatG: 2.5 } },
+
   { key: 'burgonya', aliases: ['burgonya', 'potatoes', 'potato', 'krumpli', 'fott krumpli'],
     basis: 'per100g', defaultGrams: 200, defaultState: 'cooked',
     portions: { medium: 150, small: 90, large: 250 },

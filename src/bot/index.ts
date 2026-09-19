@@ -141,7 +141,31 @@ async function applyCorrection(ctx: Context, text: string): Promise<boolean> {
   return true
 }
 
-export function mealCard(items: VisionItem[], caveat: string | null): string {
+/**
+ * Words the caption used that no item name accounts for.
+ *
+ * A caption that failed the parser still says what the food was called. When
+ * the model then answers with a different name that *is* in the table, the row
+ * resolves confidently and silently against the wrong food — `Kifli 78 gramm`
+ * became a butter croissant at 404 kcal/100 g instead of bread dough at 278,
+ * and nothing on the card disagreed. Saying so is the whole fix; the model
+ * cannot be expected to know a Hungarian kifli from a croissant by shape.
+ */
+function unusedCaptionWords(caption: string, items: VisionItem[]): string[] {
+  const names = items.map((i) => i.name.toLowerCase()).join(' ')
+  return caption
+    .toLowerCase()
+    .split(/[^\p{L}]+/u)
+    .filter((w) => w.length > 2 && !/^\d+$/.test(w))
+    .filter((w) => !['gramm', 'gram', 'and', 'with', 'egy'].includes(w))
+    .filter((w) => !names.includes(w))
+}
+
+export function mealCard(
+  items: VisionItem[],
+  caveat: string | null,
+  caption = '',
+): string {
   const kcal = items.reduce((s, i) => s + i.kcal, 0)
   const protein = items.reduce((s, i) => s + i.proteinG, 0)
   const missing = items.filter((i) => !findFood(i.name))
@@ -165,6 +189,12 @@ export function mealCard(items: VisionItem[], caveat: string | null): string {
     ...(missing.length
       ? ['', `${missing.length} not in your table — logged as an estimate, add later with /food`]
       : []),
+    ...(() => {
+      const unused = caption ? unusedCaptionWords(caption, items) : []
+      return unused.length
+        ? ['', `you wrote "${unused.join(' ')}" — I did not use that name, check the rows above`]
+        : []
+    })(),
     // Only offered where it would change something. Asking whether a weight was
     // weighed, when the weight came from the user in the first place, reads as
     // the card not having listened.
@@ -775,7 +805,7 @@ export function createBot(): Bot {
     })
 
     return ctx.api.editMessageText(
-      note.chat.id, note.message_id, mealCard(resolved, caveat),
+      note.chat.id, note.message_id, mealCard(resolved, caveat, caption),
       { reply_markup: new InlineKeyboard().text('Log it', `log:${key}`).text('Cancel', `no:${key}`) },
     )
   }
@@ -821,7 +851,7 @@ export function createBot(): Bot {
         card: 'meal',
         items: proposalRecord(reread.read.items, resolved),
       })
-      return ctx.editMessageText(mealCard(resolved, reread.read.note), {
+      return ctx.editMessageText(mealCard(resolved, reread.read.note, held.caption), {
         reply_markup: new InlineKeyboard()
           .text('Log it', `log:${next}`)
           .text('Cancel', `no:${next}`),
