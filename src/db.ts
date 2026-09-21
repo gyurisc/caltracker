@@ -1,12 +1,23 @@
 import Database from 'better-sqlite3'
 import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { basename, dirname } from 'node:path'
 import { DB_PATH, lastDays, localDate, localStamp, weekdayOf } from './config.ts'
 import { deletePhoto as dropPhoto } from './photos.ts'
 import { SEED_FOODS, type FoodEntry } from './foods.ts'
 import {
   type Activity, type Settings, DEFAULT_SETTINGS, defaultActivityFor,
 } from './nutrition.ts'
+
+// A test that reaches the real database is silent and expensive: this one wrote
+// fixture WHOOP tokens over a live grant on every `pnpm test`, and the only
+// symptom was the integration going dead an hour later. src/test-setup.ts gives
+// each test file its own file; if that ever stops working, stop here loudly
+// rather than writing to the log people actually use.
+if (process.env.VITEST && basename(DB_PATH) === 'caltrack.db') {
+  throw new Error(
+    `refusing to open the production database under test (${DB_PATH}) — see src/test-setup.ts`,
+  )
+}
 
 mkdirSync(dirname(DB_PATH), { recursive: true })
 

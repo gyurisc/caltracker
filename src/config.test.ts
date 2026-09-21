@@ -4,12 +4,14 @@ import { DB_PATH, ROOT, addDays, fromRoot, lastDays, localDate, weekdayOf } from
 
 describe('paths are pinned to the repo, not cwd', () => {
   it('resolves DB_PATH absolutely', () => {
+    // Against ROOT and against whatever DB_PATH says — not against the default
+    // name, which the test suite deliberately overrides (src/test-setup.ts).
     expect(isAbsolute(DB_PATH)).toBe(true)
-    expect(DB_PATH).toBe(resolve(ROOT, 'data/caltrack.db'))
+    expect(DB_PATH).toBe(resolve(ROOT, process.env.DB_PATH ?? './data/caltrack.db'))
   })
 
   it('does not move when the working directory does', () => {
-    const before = DB_PATH
+    const before = fromRoot('./data/caltrack.db')
     const cwd = process.cwd()
     try {
       process.chdir('/')
