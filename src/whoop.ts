@@ -119,6 +119,15 @@ async function postForm(
   }
   if (!json.access_token) throw new Error('WHOOP returned no access token')
 
+  // What WHOOP actually returned, minus the secrets. The access-token lifetime
+  // is the one number this code has only ever guessed at, and a wrong guess is
+  // invisible: the token 401s at the API while `expiresAt` still says it is fine.
+  console.log(
+    `[whoop] grant: expires_in=${json.expires_in ?? '(absent)'}`
+    + ` refresh=${json.refresh_token ? 'rotated' : '(not returned)'}`
+    + ` scope=${(json as { scope?: string }).scope ?? '(absent)'}`,
+  )
+
   // A refresh does not have to return a new refresh token; plenty of providers
   // return only an access token and leave the existing one valid. Requiring one
   // here is what disconnected this integration an hour after it was linked.
