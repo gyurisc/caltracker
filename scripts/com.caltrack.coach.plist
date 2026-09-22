@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.caltrack.coach</string>
+
+  <!-- Absolute paths throughout. `zsh -lc` does not source .zshrc, which is
+       where nvm lives, so a bare `npx` or `claude` here fails with exit 127.
+       The installer fills these in from `which`, so re-run it after a node
+       upgrade — same rule as com.caltrack.server. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__ROOT__/scripts/coach-notify.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__NODEBIN__:__CLAUDEBIN__:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>__ROOT__</string>
+
+  <!-- 07:00, 11:00 and 16:00 local time. launchd owns the clock here; a missed
+       fire (Mac asleep or off) runs once shortly after it wakes, which is the
+       behaviour we want — a late breakfast report still beats none. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>16</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+
+  <!-- One shot per fire. KeepAlive here would relaunch it forever. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>__ROOT__/data/coach.log</string>
+  <key>StandardErrorPath</key>
+  <string>__ROOT__/data/coach.log</string>
+</dict>
+</plist>
