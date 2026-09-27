@@ -2,7 +2,8 @@
 
 Status: **planned, not done.** The app runs on a Mac mini under launchd today.
 This is the design for moving it to a Hetzner box, and the security model it
-has to satisfy.
+has to satisfy. `deploy-runbook.md` beside this is the procedure — read this one
+when deciding whether something is safe, that one when doing it.
 
 The PRD anticipates this. §4 lists "Public internet, webhook, Nginx, Docker,
 VPS" as a **v1 non-goal**, and §16 step 8 puts "VPS + webhook + firewall +
