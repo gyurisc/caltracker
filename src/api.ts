@@ -84,6 +84,9 @@ api.get('/state', (c) => {
       maintenance: settings.maintenance[dayRow.activity],
       targetKcal: targetKcal(dayRow.activity, settings),
       ...weekTotals[d]!,
+      // `rows`, not `items`: the spread above already carries an `items` count
+      // from totalsFor, and an array under that name would silently replace it.
+      rows: foodsOn(d),
     }
   })
 

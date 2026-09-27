@@ -46,6 +46,11 @@ h2 { font-size: 11px; margin: 0 0 10px; color: var(--dim); text-transform: upper
 .blue { color: var(--blue); }
 .caption { color: var(--faint); font-size: 11px; margin-top: 9px; }
 
+/* One day inside the week list. A rule between days, never above the first. */
+.day { padding-top: 14px; border-top: 1px solid var(--line); margin-top: 14px; }
+.day:first-of-type { padding-top: 0; border-top: 0; margin-top: 10px; }
+h3 { font-size: 13px; margin: 0; font-weight: 600; }
+
 textarea, input {
   width: 100%;
   background: var(--bg);

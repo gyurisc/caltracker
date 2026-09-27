@@ -23,7 +23,9 @@ export type WeekDay = {
   targetKcal: number
   kcal: number
   proteinG: number
+  /** How many entries the day has. A count — the entries themselves are `rows`. */
   items: number
+  rows: FoodRow[]
 }
 
 export type TrendDay = {

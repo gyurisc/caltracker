@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getState, type Activity, type State, type TrendDay } from './api.ts'
+import { getState, type Activity, type FoodRow, type State, type TrendDay } from './api.ts'
 import { CalorieChart, MacroChart, ProteinChart } from './charts.tsx'
 
 const n = (v: number) => Math.round(v).toLocaleString('en-US')
@@ -39,6 +39,7 @@ export default function App() {
       <ProteinChart days={state.trend} goal={settings.proteinGoal} />
       <MacroChart days={state.trend} />
       <Today state={state} />
+      <Week state={state} />
       <WeightTrend trend={state.trend} goal={settings.proteinGoal} />
       <Targets state={state} />
 
@@ -94,31 +95,85 @@ function Today({ state }: { state: State }) {
       {items.length === 0 ? (
         <p className="dim" style={{ marginTop: 16 }}>Nothing logged yet. Log food in Telegram.</p>
       ) : (
-        <table style={{ marginTop: 14 }}>
-          <tbody>
-            {items.map((i) => (
-              <tr key={i.id}>
-                <td>
-                  {i.photo_path && <Shot id={i.photo_path} alt={i.name} />}
-                  {i.meal_tag && <span className="tag">{i.meal_tag} </span>}
-                  {i.name}
-                  {i.grams != null && (
-                    <span className="faint">
-                      {' '}{i.grams} g{i.cooked == null ? '' : i.cooked ? ' cooked' : ' raw'}
-                    </span>
-                  )}
-                </td>
-                <td className="num faint">{i.time}</td>
-                <td className="num">{Math.round(i.protein_g)} g</td>
-                <td className="num">
-                  {i.provenance !== 'measured' && <span className="faint" title="estimate, never weighed">~</span>}
-                  {n(i.kcal)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ItemList items={items} />
       )}
+    </section>
+  )
+}
+
+/**
+ * One day's entries. Today and the week below it share this, so the two cannot
+ * drift into rendering the same row two different ways.
+ *
+ * Photos are Today's alone: a week of thumbnails is a lot of fetching for rows
+ * you are scanning rather than re-examining, and the day you want to look at
+ * closely is the one already open above.
+ */
+function ItemList({ items, photos = true }: { items: FoodRow[]; photos?: boolean }) {
+  return (
+    <table style={{ marginTop: 14 }}>
+      <tbody>
+        {items.map((i) => (
+          <tr key={i.id}>
+            <td>
+              {photos && i.photo_path && <Shot id={i.photo_path} alt={i.name} />}
+              {i.meal_tag && <span className="tag">{i.meal_tag} </span>}
+              {i.name}
+              {i.grams != null && (
+                <span className="faint">
+                  {' '}{i.grams} g{i.cooked == null ? '' : i.cooked ? ' cooked' : ' raw'}
+                </span>
+              )}
+            </td>
+            <td className="num faint">{i.time}</td>
+            <td className="num">{Math.round(i.protein_g)} g</td>
+            <td className="num">
+              {i.provenance !== 'measured' && <span className="faint" title="estimate, never weighed">~</span>}
+              {n(i.kcal)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+/**
+ * The days before today, each with the entries that made up its total.
+ *
+ * Today keeps its own card above, with the bars and the weigh-in, so it is left
+ * out here rather than drawn twice. A day with nothing logged still gets a
+ * heading: an absent card reads as a bug, a quiet one reads as a quiet day.
+ */
+function Week({ state }: { state: State }) {
+  // lastDays() hands back oldest first, which is right for a chart axis and
+  // wrong for a log — most recent is what you came to read.
+  const earlier = state.week.filter((d) => d.date !== state.today.date).slice().reverse()
+  if (earlier.length === 0) return null
+
+  return (
+    <section className="panel">
+      <h2>Last 7 days</h2>
+      {earlier.map((d) => {
+        const over = d.kcal > d.targetKcal
+        return (
+          <div className="day" key={d.date}>
+            <div className="head" style={{ marginBottom: 2 }}>
+              <h3 style={{ margin: 0 }}>{dayName(d.date)} · {d.date}</h3>
+              <div className="row">
+                <span className="chip">{LABEL[d.activity]}</span>
+                <span className={over ? 'red' : 'dim'}>
+                  {n(d.kcal)} / {n(d.targetKcal)} kcal
+                </span>
+                <span className="faint">{Math.round(d.proteinG)} g P</span>
+              </div>
+            </div>
+            {d.rows.length === 0
+              ? <p className="dim" style={{ margin: '8px 0 0' }}>Nothing logged.</p>
+              : <ItemList items={d.rows} photos={false} />}
+          </div>
+        )
+      })}
     </section>
   )
 }
