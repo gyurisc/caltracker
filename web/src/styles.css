@@ -51,6 +51,18 @@ h2 { font-size: 11px; margin: 0 0 10px; color: var(--dim); text-transform: upper
 .day:first-of-type { padding-top: 0; border-top: 0; margin-top: 10px; }
 h3 { font-size: 13px; margin: 0; font-weight: 600; }
 
+/* The day's photos, gathered under its rows. Wraps rather than scrolls: a day
+   is a handful of plates, not a feed, and a hidden one may as well not exist. */
+.strip { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.tile {
+  width: 62px;
+  height: 62px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  cursor: zoom-in;
+}
+
 textarea, input {
   width: 100%;
   background: var(--bg);

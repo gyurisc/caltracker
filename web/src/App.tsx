@@ -139,6 +139,26 @@ function ItemList({ items, photos = true }: { items: FoodRow[]; photos?: boolean
 }
 
 /**
+ * The day's photos, under the rows they produced.
+ *
+ * The numbers above are mostly estimates; the pictures are what they were
+ * estimated from. Gathered at the foot of the day they also read as the day
+ * itself — six plates in a row says more at a glance than six rows of grams.
+ * A day that was never photographed gets no strip rather than an empty shelf.
+ */
+function PhotoStrip({ items }: { items: FoodRow[] }) {
+  const shots = items.filter((i) => i.photo_path)
+  if (shots.length === 0) return null
+  return (
+    <div className="strip">
+      {shots.map((i) => (
+        <Shot key={i.id} id={i.photo_path!} alt={i.name} className="tile" />
+      ))}
+    </div>
+  )
+}
+
+/**
  * The days before today, each with the entries that made up its total.
  *
  * Today keeps its own card above, with the bars and the weigh-in, so it is left
@@ -170,7 +190,7 @@ function Week({ state }: { state: State }) {
             </div>
             {d.rows.length === 0
               ? <p className="dim" style={{ margin: '8px 0 0' }}>Nothing logged.</p>
-              : <ItemList items={d.rows} photos={false} />}
+              : <><ItemList items={d.rows} photos={false} /><PhotoStrip items={d.rows} /></>}
           </div>
         )
       })}
@@ -186,12 +206,12 @@ function Week({ state }: { state: State }) {
  * whether "sauce 80 g" was a spoonful or a ladle, so it sits next to the line
  * rather than somewhere else. Small by default; the full frame opens on click.
  */
-function Shot({ id, alt }: { id: string; alt: string }) {
+function Shot({ id, alt, className = 'shot' }: { id: string; alt: string; className?: string }) {
   const [open, setOpen] = useState(false)
   return (
     <>
       <img
-        className="shot"
+        className={className}
         src={`/api/photo/${id}?size=thumb`}
         alt={alt}
         loading="lazy"
