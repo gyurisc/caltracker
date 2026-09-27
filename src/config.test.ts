@@ -1,6 +1,6 @@
 import { isAbsolute, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DB_PATH, ROOT, addDays, fromRoot, lastDays, localDate, weekdayOf } from './config.ts'
+import { DB_PATH, PORT, ROOT, addDays, fromRoot, lastDays, localDate, weekdayOf, whoopRedirect } from './config.ts'
 
 describe('paths are pinned to the repo, not cwd', () => {
   it('resolves DB_PATH absolutely', () => {
@@ -23,6 +23,25 @@ describe('paths are pinned to the repo, not cwd', () => {
 
   it('leaves an absolute override alone', () => {
     expect(fromRoot('/var/lib/caltrack.db')).toBe('/var/lib/caltrack.db')
+  })
+})
+
+describe('the WHOOP redirect follows the host it is reached on', () => {
+  // WHOOP matches this character for character against the app registration.
+  // Deriving it from PORT pins it to localhost, which is right on the Mac and
+  // breaks the connect flow on a public box with an error that only ever says
+  // "redirect_uri mismatch" (docs/deploy.md §4).
+  it('uses PUBLIC_URL when one is set', () => {
+    expect(whoopRedirect('https://rawdog.example.com')).toBe('https://rawdog.example.com/api/whoop/callback')
+  })
+
+  it('tolerates a trailing slash, which an env var picks up easily', () => {
+    expect(whoopRedirect('https://rawdog.example.com/')).toBe('https://rawdog.example.com/api/whoop/callback')
+  })
+
+  it('falls back to localhost and PORT when PUBLIC_URL is unset', () => {
+    expect(whoopRedirect(undefined)).toBe(`http://localhost:${PORT}/api/whoop/callback`)
+    expect(whoopRedirect('')).toBe(`http://localhost:${PORT}/api/whoop/callback`)
   })
 })
 

@@ -1,5 +1,5 @@
 import { Bot, type Context, InlineKeyboard } from 'grammy'
-import { addDays, PORT, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
+import { addDays, PORT, PUBLIC_URL, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
 import {
   deleteFood, foodsOn, foodsWithName, getDay, getSettings, mostRecentFood, setActivity, setSteps,
   setWaist, setWeight, totalsFor,
@@ -497,7 +497,12 @@ export function createBot(): Bot {
         [
           whoopConnected() ? 'reconnecting WHOOP' : 'WHOOP is not connected yet',
           '',
-          `open this on the mac: http://localhost:${PORT}/api/whoop/start`,
+          // The link has to point at whichever host is running this. On the Mac
+          // that is localhost; on the VPS it is PUBLIC_URL, and saying "on the
+          // mac" there would send you to a port nothing is listening on.
+          PUBLIC_URL
+            ? `open this: ${PUBLIC_URL}/api/whoop/start`
+            : `open this on the mac: http://localhost:${PORT}/api/whoop/start`,
         ].join('\n'),
       )
     }

@@ -27,8 +27,28 @@ export const TELEGRAM_USER_ID = Number(process.env.TELEGRAM_USER_ID || 0)
 export const XAI_API_KEY = process.env.XAI_API_KEY?.trim() || ''
 export const WHOOP_CLIENT_ID = process.env.WHOOP_CLIENT_ID?.trim() || ''
 export const WHOOP_CLIENT_SECRET = process.env.WHOOP_CLIENT_SECRET?.trim() || ''
-/** Must match the redirect registered on the WHOOP app, character for character. */
-export const WHOOP_REDIRECT = `http://localhost:${PORT}/api/whoop/callback`
+/**
+ * Where this instance is reachable from a browser, without a trailing slash.
+ * Unset on the Mac, where localhost is the truth; set on a public box.
+ */
+export const PUBLIC_URL = process.env.PUBLIC_URL?.trim().replace(/\/+$/, '') || ''
+
+/**
+ * Must match the redirect registered on the WHOOP app, character for character.
+ *
+ * Exported as a function so it can be tested without reloading the module, and
+ * so the fallback stays visible: derived from PORT this was pinned to
+ * localhost, which is right on the Mac and fatal on a public host — the connect
+ * flow fails there with an error that only says "redirect_uri mismatch"
+ * (docs/deploy.md §4). WHOOP accepts several registered URIs, so both can live
+ * on the app at once.
+ */
+export function whoopRedirect(publicUrl: string | undefined = PUBLIC_URL): string {
+  const base = publicUrl?.trim().replace(/\/+$/, '')
+  return `${base || `http://localhost:${PORT}`}/api/whoop/callback`
+}
+
+export const WHOOP_REDIRECT = whoopRedirect()
 
 // All "today" logic goes through here. A local date string, never a UTC date.
 const dateFmt = new Intl.DateTimeFormat('en-CA', {
