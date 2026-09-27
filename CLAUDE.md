@@ -116,8 +116,12 @@ entity on any `/command` text, or grammY routes it to the text handler instead.
   started from the wrong directory silently gets an empty log **and** a disabled bot while
   appearing healthy. `DB_PATH`, `.env`, and `dist/` are all pinned this way.
 - The PRD says `caltracker.db`; the code and README use `caltrack.db`. The code is correct.
-- Vision (PRD §7.3) is **not built**. Photos are refused. When adding it, the confirm card
-  needs a pending store: Telegram caps `callback_data` at 64 bytes, so parsed items cannot
-  ride in the button. PRD §7.1 specifies an in-process `Map` with a TTL.
-- `POST /api/settings` is the only way to change goals; the dashboard Targets block is
-  read-only.
+- Vision (PRD §7.3) **is** built — `src/vision.ts`, the confirm card in `src/bot/index.ts`.
+  The pending store is the in-process `Map` with a TTL that PRD §7.1 specifies, because
+  Telegram caps `callback_data` at 64 bytes and parsed items cannot ride in the button.
+  A caption that already parses skips the model entirely: your weight beats its estimate.
+- **HTTP is read-only.** `src/api.ts` serves `GET` only — the six write routes were
+  deleted when the dashboard went public, because behind a reverse proxy every request
+  arrives from `127.0.0.1` and `src/access.ts` allows that. Telegram is the write
+  surface. `/target protein 170` (and `deficit`, `rest`/`lift`/`cycle`) changes goals,
+  which `POST /api/settings` used to be the only way to do. See `docs/deploy.md` §5.

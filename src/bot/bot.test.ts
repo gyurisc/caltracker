@@ -537,3 +537,42 @@ describe('the card says when it ignored the name you typed', () => {
     expect(mealCard([item('croissant')], null, '')).not.toContain('you wrote')
   })
 })
+
+describe('/target is the only way left to move a goal', () => {
+  // POST /api/settings was it until the dashboard went public. There is no auth
+  // in this app by design, so the write moved to the surface that has an
+  // allowlist — see src/targetcmd.ts and docs/deploy.md §5.
+  it('writes the protein goal and reports the new numbers', async () => {
+    await bot.handleUpdate(update(OWNER, '/target protein 165') as never)
+    const { getSettings } = await import('../db.ts')
+    expect(getSettings().proteinGoal).toBe(165)
+    expect(sent.at(-1)).toContain('165 g')
+  })
+
+  it('moves one maintenance figure and leaves the others', async () => {
+    const { getSettings } = await import('../db.ts')
+    const before = getSettings().maintenance
+    await bot.handleUpdate(update(OWNER, '/target lift 2555') as never)
+    expect(getSettings().maintenance).toEqual({ ...before, lifting: 2555 })
+  })
+
+  it('refuses a typo instead of defaulting to rest', async () => {
+    const { getSettings } = await import('../db.ts')
+    const before = getSettings()
+    await bot.handleUpdate(update(OWNER, '/target resst 2400') as never)
+    expect(getSettings()).toEqual(before)
+    expect(sent.at(-1)).toContain('no target called')
+  })
+
+  it('still prints when given no argument', async () => {
+    await bot.handleUpdate(update(OWNER, '/target') as never)
+    expect(sent.at(-1)).toContain('protein goal')
+  })
+
+  it('ignores a stranger entirely', async () => {
+    const { getSettings } = await import('../db.ts')
+    const before = getSettings().proteinGoal
+    await bot.handleUpdate(update(STRANGER, '/target protein 10') as never)
+    expect(getSettings().proteinGoal).toBe(before)
+  })
+})

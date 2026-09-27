@@ -1,21 +1,14 @@
 import { Hono } from 'hono'
 import { lastDays, localDate } from './config.ts'
 import {
-  deleteFood, foodsOn, getDay, getSettings, getSteps, getWaists, getWeights, mostRecentFood,
-  saveSettings, setActivity, setWeight, totalsFor, type DayRow,
+  foodsOn, getDay, getSettings, getSteps, getWaists, getWeights, totalsFor, type DayRow,
 } from './db.ts'
-import { activityLabel, normalizeActivity, targetKcal, type Activity } from './nutrition.ts'
-import { isWithinUndoWindow, logText } from './service.ts'
+import { activityLabel, targetKcal } from './nutrition.ts'
 
 import { readPhoto as readStoredPhoto } from './photos.ts'
 import { authorizeUrl, configured as whoopConfigured, exchangeCode } from './whoop.ts'
 
 export const api = new Hono()
-
-/** A malformed body is an empty body, not a 500. */
-async function readJson<T extends object>(c: { req: { json: <U>() => Promise<U> } }): Promise<Partial<T>> {
-  return c.req.json<Partial<T>>().catch(() => ({}) as Partial<T>)
-}
 
 function dayView(day: DayRow) {
   const s = getSettings()
@@ -128,59 +121,21 @@ api.get('/state', (c) => {
   })
 })
 
-api.post('/log', async (c) => {
-  const body = await readJson<{ text: string; date: string }>(c)
-  const text = (body.text ?? '').trim()
-  if (!text) return c.json({ error: 'empty' }, 400)
-
-  const result = logText(text, { date: body.date })
-  if (!result.ok) {
-    return c.json(
-      { error: 'unmatched', unmatched: result.unmatched, hint: 'Not in the local table yet — photo logging lands with vision.' },
-      422,
-    )
-  }
-  return c.json({ rows: result.rows })
-})
-
-api.delete('/food/:id', (c) => {
-  const row = deleteFood(c.req.param('id'))
-  if (!row) return c.json({ error: 'not found' }, 404)
-  return c.json({ deleted: row })
-})
-
-/** Same rule as the bot: most recent row overall, refused past the undo window. */
-api.post('/undo', (c) => {
-  const row = mostRecentFood()
-  if (!row) return c.json({ error: 'nothing to undo' }, 404)
-  if (!isWithinUndoWindow(row)) return c.json({ error: 'nothing recent to undo' }, 409)
-  deleteFood(row.id)
-  return c.json({ deleted: row })
-})
-
-api.post('/day/activity', async (c) => {
-  const body = await readJson<{ date: string; activity: string }>(c)
-  const activity = normalizeActivity(body.activity ?? '')
-  if (!activity) return c.json({ error: 'unknown activity' }, 400)
-  return c.json({ day: dayView(setActivity(body.date ?? localDate(), activity as Activity)) })
-})
-
-api.post('/day/weight', async (c) => {
-  const body = await readJson<{ date: string; kg: number }>(c)
-  const kg = Number(body.kg)
-  if (!Number.isFinite(kg) || kg <= 0 || kg > 400) return c.json({ error: 'bad weight' }, 400)
-  return c.json({ day: dayView(setWeight(body.date ?? localDate(), kg)) })
-})
-
-api.post('/settings', async (c) => {
-  const body = await readJson<Record<string, unknown>>(c)
-  const patch: Record<string, unknown> = {}
-  if (Number.isFinite(Number(body.proteinGoal))) patch.proteinGoal = Number(body.proteinGoal)
-  if (Number.isFinite(Number(body.deficit))) patch.deficit = Number(body.deficit)
-  if (body.maintenance && typeof body.maintenance === 'object') patch.maintenance = body.maintenance
-  return c.json({ settings: saveSettings(patch) })
-})
-
+// Six write routes used to live here: POST /log, /undo, /day/activity,
+// /day/weight, /settings, and DELETE /food/:id. They were the server half of
+// the composer, the per-row delete, the weight field, the activity chips and
+// the editable Targets block in PRD §7.5 — blocks the dashboard never grew.
+//
+// Nothing called them. The bot writes through service.ts directly, the /cal-*
+// commands open SQLite directly, and web/src/api.ts only ever fetched /state.
+// They are gone rather than address-gated because the dashboard is now served
+// to the internet through a proxy, and behind a proxy every request arrives
+// from 127.0.0.1 — an address rule waves it straight through. A route that
+// does not exist cannot be exposed by a bad access rule.
+//
+// Telegram is the write surface now: it is allowlisted to one user id, and
+// /target learned to set the goals that only POST /settings could reach.
+//
 // `POST /api/seed` used to live here. It called seedSampleData() with no flag
 // check, so one request put 125 demo rows into a log that had been deliberately
 // wiped — which is exactly what happened while testing the access rules. Seeding

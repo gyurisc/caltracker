@@ -1,10 +1,11 @@
 import { Bot, type Context, InlineKeyboard } from 'grammy'
 import { addDays, PORT, PUBLIC_URL, TELEGRAM_BOT_TOKEN, TELEGRAM_USER_ID, lastDays, localDate } from '../config.ts'
 import {
-  deleteFood, foodsOn, foodsWithName, getDay, getSettings, mostRecentFood, setActivity, setSteps,
-  setWaist, setWeight, totalsFor,
+  deleteFood, foodsOn, foodsWithName, getDay, getSettings, mostRecentFood, saveSettings,
+  setActivity, setSteps, setWaist, setWeight, totalsFor,
 } from '../db.ts'
 import { formatFoodCommand, parseAliasCommand, parseFoodCommand } from '../foodcmd.ts'
+import { parseTargetCommand, patchFor } from '../targetcmd.ts'
 import { bareFoodName } from '../parse.ts'
 import { nearMatches } from '../similar.ts'
 import { activityLabel, deriveKcal, normalizeActivity, targetKcal } from '../nutrition.ts'
@@ -429,6 +430,25 @@ export function createBot(): Bot {
   })
 
   bot.command('target', (ctx) => {
+    // With an argument this writes. It is the only surface that can: the
+    // dashboard is public and has no auth, so POST /api/settings had to go
+    // (docs/deploy.md §5). Telegram is allowlisted to one user id.
+    const arg = (ctx.match ?? '').toString().trim()
+    if (arg) {
+      const cmd = parseTargetCommand(arg)
+      if (!cmd.ok) return ctx.reply(cmd.error)
+      const next = saveSettings(patchFor(cmd, getSettings()))
+      const day = getDay(localDate())
+      return ctx.reply(
+        [
+          `protein goal ${next.proteinGoal} g · deficit ${n(next.deficit)}`,
+          `rest ${n(next.maintenance.rest)} · lift ${n(next.maintenance.lifting)} · cycle ${n(next.maintenance.cycling)}`,
+          '',
+          `today (${activityLabel(day.activity)}): ${n(targetKcal(day.activity, next))} kcal`,
+        ].join('\n'),
+      )
+    }
+
     const s = getSettings()
     const day = getDay(localDate())
     ctx.reply(

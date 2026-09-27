@@ -158,18 +158,29 @@ does not repeat it.
 
 ## 5. The mutating routes
 
-Not reachable from the internet under the access rule above, but worth knowing
-they exist:
+There are none. HTTP is read-only end to end:
 
 ```
-POST   /api/log            POST   /api/day/activity
-POST   /api/undo           POST   /api/day/weight
-DELETE /api/food/:id       POST   /api/settings
+GET /stats   GET /health   GET /api/state
+GET /api/photo/:id         GET /api/whoop/start, /api/whoop/callback
 ```
 
-Nothing in the dashboard calls any of them; every write goes through Telegram.
-`POST /api/settings` is the only way to change calorie goals and is worth
-keeping.
+Six write routes used to live in `src/api.ts` — `POST /log`, `/undo`,
+`/day/activity`, `/day/weight`, `/settings`, and `DELETE /food/:id`. They were
+the server half of PRD §7.5's composer, per-row delete, weight field, activity
+chips and editable Targets block, and the dashboard never grew any of them.
+
+They are **deleted**, not address-gated, and the reason matters. The access rule
+in §2 is about the peer address, and behind a reverse proxy every request
+arrives from `127.0.0.1` — which that rule allows. A private route behind a
+proxy is a public route. A route that does not exist cannot be exposed by a bad
+access rule, so deletion is the only version of this that survives a proxy
+misconfiguration.
+
+Telegram is the write surface: allowlisted to one user id, and it dials outward
+so nothing inbound has to be trusted. `POST /api/settings` was the only way to
+change calorie goals; `/target protein 170`, `/target deficit 400` and
+`/target rest|lift|cycle 2400` replace it (`src/targetcmd.ts`).
 
 `POST /api/seed` used to be here and is **deleted**. It called
 `seedSampleData()` with no flag check, so a single request put 112 demo rows
