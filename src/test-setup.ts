@@ -1,3 +1,4 @@
+import { existsSync, rmSync } from 'node:fs'
 import { basename } from 'node:path'
 import { expect } from 'vitest'
 
@@ -19,4 +20,11 @@ import { expect } from 'vitest'
  */
 const file = expect.getState().testPath
 if (!file) throw new Error('test-setup: vitest gave no testPath — cannot isolate the database')
-process.env.DB_PATH = `./data/test-${basename(file).replace(/\.test\.ts$/, '')}.db`
+const path = `./data/test-${basename(file).replace(/\.test\.ts$/, '')}.db`
+process.env.DB_PATH = path
+
+// Start from an empty database every run. These files persist between runs, so
+// a test that counts rows passes once and then fails on the second `pnpm test`
+// with nothing in the code changed — and the WAL and shared-memory sidecars
+// carry state of their own, so all three have to go.
+for (const f of [path, `${path}-wal`, `${path}-shm`]) if (existsSync(f)) rmSync(f)
