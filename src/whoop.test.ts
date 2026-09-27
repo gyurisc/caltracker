@@ -226,3 +226,76 @@ describe('refreshing under concurrency', () => {
     }
   })
 })
+
+describe('the one-time connect token', () => {
+  let mintConnectToken: typeof import('./whoop.ts').mintConnectToken
+  let consumeConnectToken: typeof import('./whoop.ts').consumeConnectToken
+  let setFlag: typeof import('./db.ts').setFlag
+
+  beforeAll(async () => {
+    process.env.DB_PATH = './data/test-whoop.db'
+    ;({ setFlag } = await import('./db.ts'))
+    ;({ mintConnectToken, consumeConnectToken } = await import('./whoop.ts'))
+  })
+
+  // /api/whoop/start has to answer the public internet: the OAuth redirect
+  // lands in a browser that may be anywhere, so it cannot be address-gated.
+  // Without a token anyone who finds the host can walk the flow and bind their
+  // own WHOOP account, or simply overwrite the owner's pending connect —
+  // whoop_state is a single slot (docs/deploy.md §4).
+  it('lets a freshly minted token through exactly once', () => {
+    const t = mintConnectToken()
+    expect(consumeConnectToken(t)).toBe(true)
+    expect(consumeConnectToken(t)).toBe(false)
+  })
+
+  it('refuses a token that was never minted', () => {
+    mintConnectToken()
+    expect(consumeConnectToken('not-the-one')).toBe(false)
+    expect(consumeConnectToken('')).toBe(false)
+    expect(consumeConnectToken(undefined)).toBe(false)
+  })
+
+  it('refuses when nothing is pending at all', () => {
+    setFlag('whoop_connect_token', null)
+    expect(consumeConnectToken('anything')).toBe(false)
+  })
+
+  it('refuses one that has expired', () => {
+    const t = mintConnectToken()
+    setFlag('whoop_connect_token', { token: t, expiresAt: Date.now() - 1 })
+    expect(consumeConnectToken(t)).toBe(false)
+  })
+})
+
+describe('account pinning', () => {
+  let rememberOrCheckAccount: typeof import('./whoop.ts').rememberOrCheckAccount
+  let getFlag: typeof import('./db.ts').getFlag
+  let setFlag: typeof import('./db.ts').setFlag
+
+  beforeAll(async () => {
+    process.env.DB_PATH = './data/test-whoop.db'
+    ;({ getFlag, setFlag } = await import('./db.ts'))
+    ;({ rememberOrCheckAccount } = await import('./whoop.ts'))
+  })
+
+  it('records the account on the first connect', () => {
+    setFlag('whoop_user_id', null)
+    rememberOrCheckAccount(1234)
+    expect(getFlag('whoop_user_id')).toBe(1234)
+  })
+
+  it('accepts the same account again', () => {
+    setFlag('whoop_user_id', 1234)
+    expect(() => rememberOrCheckAccount(1234)).not.toThrow()
+  })
+
+  // Catches a stranger who got past the token guard, and the likelier case:
+  // authorising the wrong WHOOP account by accident, which would otherwise
+  // start quietly filling the log with somebody else's sleep.
+  it('refuses a different account', () => {
+    setFlag('whoop_user_id', 1234)
+    expect(() => rememberOrCheckAccount(9999)).toThrow(/different WHOOP account/i)
+    expect(getFlag('whoop_user_id')).toBe(1234)
+  })
+})

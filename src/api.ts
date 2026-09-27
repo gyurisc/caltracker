@@ -6,7 +6,9 @@ import {
 import { activityLabel, targetKcal } from './nutrition.ts'
 
 import { readPhoto as readStoredPhoto } from './photos.ts'
-import { authorizeUrl, configured as whoopConfigured, exchangeCode } from './whoop.ts'
+import {
+  authorizeUrl, configured as whoopConfigured, consumeConnectToken, exchangeCode,
+} from './whoop.ts'
 
 export const api = new Hono()
 
@@ -35,6 +37,14 @@ function dayView(day: DayRow) {
  */
 api.get('/whoop/start', (c) => {
   if (!whoopConfigured()) return c.text('no WHOOP_CLIENT_ID / WHOOP_CLIENT_SECRET in .env', 400)
+
+  // This route answers the whole internet — the redirect comes back to a
+  // browser that may be anywhere, so it cannot be address-gated. The ticket is
+  // minted by /whoop connect in Telegram, which is allowlisted to one user id.
+  // 404 rather than 403, for the same reason the access middleware uses it: a
+  // refusal that admits the route exists is an invitation.
+  if (!consumeConnectToken(c.req.query('t'))) return c.notFound()
+
   return c.redirect(authorizeUrl())
 })
 

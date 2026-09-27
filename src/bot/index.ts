@@ -22,7 +22,7 @@ import { prepareImage, readPrepared, type VisionItem } from '../vision.ts'
 import { deletePhoto, readPhoto as readStoredPhoto, savePhoto } from '../photos.ts'
 import { askCoach, forget, historyFor, remember } from '../coach.ts'
 import {
-  configured as whoopConfigured, connected as whoopConnected,
+  configured as whoopConfigured, connected as whoopConnected, mintConnectToken,
   forgetTokens as forgetWhoop, syncRecent as syncWhoop,
 } from '../whoop.ts'
 import { addFoods, logEvent } from '../db.ts'
@@ -520,9 +520,13 @@ export function createBot(): Bot {
           // The link has to point at whichever host is running this. On the Mac
           // that is localhost; on the VPS it is PUBLIC_URL, and saying "on the
           // mac" there would send you to a port nothing is listening on.
+          //
+          // It carries a single-use ticket: /api/whoop/start answers the public
+          // internet and is 404 without one. This command is the only place
+          // that mints one, and only the allowlisted user reaches it.
           PUBLIC_URL
-            ? `open this: ${PUBLIC_URL}/api/whoop/start`
-            : `open this on the mac: http://localhost:${PORT}/api/whoop/start`,
+            ? `open this within 10 minutes: ${PUBLIC_URL}/api/whoop/start?t=${mintConnectToken()}`
+            : `open this on the mac within 10 minutes: http://localhost:${PORT}/api/whoop/start?t=${mintConnectToken()}`,
         ].join('\n'),
       )
     }

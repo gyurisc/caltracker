@@ -133,17 +133,25 @@ them, and finish normally — binding *their* WHOOP account to this instance. A
 lesser nuisance: `whoop_state` is a single slot, so anyone hitting `/start`
 overwrites the owner's pending connect.
 
-Two guards, neither built yet:
+Two guards, **both now built**:
 
-**A one-time connect token.** The bot is already allowlisted to exactly one
-Telegram user id. `/whoop connect` mints a single-use, short-lived token and
-returns `…/api/whoop/start?t=<token>`; `/start` without a valid token returns
-404. This closes the hole outright.
+**A one-time connect token.** The bot is allowlisted to exactly one Telegram
+user id. `/whoop connect` mints a single-use ticket good for ten minutes and
+returns `…/api/whoop/start?t=<token>`; `/start` without a valid one returns 404,
+not 403. A wrong guess burns the pending ticket rather than leaving it up for
+another try. The ticket lives in the database, so a restart between minting it
+and opening the link does not strand you. `src/whoop.ts`, `mintConnectToken`.
 
-**Account pinning.** On callback, fetch `/user/profile/basic` and compare
-`user_id` against the value recorded on first successful connect. A foreign
-account is refused even if the token guard were bypassed, and it also catches
-authorising the wrong WHOOP account by accident.
+**Account pinning.** `exchangeCode` reads `/user/profile/basic` and compares
+`user_id` against the value recorded on the first successful connect. A foreign
+account is refused and the just-stored grant is dropped. The tokens have to be
+stored before the profile can be read, so this unwinds a foreign account rather
+than preventing it — a window of one request. A profile that cannot be read at
+all also fails the connect: this is an interactive flow you can retry, and a
+grant nobody verified is worse than another trip to the browser.
+
+The pin arms on the next successful connect. A grant made before these landed
+has no recorded account until it is reconnected once.
 
 ### Grant durability
 

@@ -68,12 +68,72 @@ export function forgetTokens(): void {
 }
 
 /**
+ * A single-use ticket for `/api/whoop/start`.
+ *
+ * That route has to answer the whole internet: the OAuth redirect lands in a
+ * browser that may be anywhere, so it cannot be address-gated like everything
+ * else. Without a ticket, anyone who finds the hostname can walk the flow and
+ * bind *their* WHOOP account to this instance — and, more cheaply, overwrite
+ * the owner's pending connect, because `whoop_state` is a single slot.
+ *
+ * The ticket is minted by `/whoop connect` in Telegram, which is allowlisted to
+ * one user id. It lives in the database rather than in memory so a restart
+ * between minting it and opening the link does not strand you.
+ */
+const CONNECT_TOKEN_TTL_MS = 10 * 60 * 1000
+
+type ConnectTicket = { token: string; expiresAt: number }
+
+function randomToken(): string {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36)
+}
+
+export function mintConnectToken(): string {
+  const token = randomToken()
+  setFlag('whoop_connect_token', { token, expiresAt: Date.now() + CONNECT_TOKEN_TTL_MS })
+  return token
+}
+
+/** True once for a live ticket, false forever after — including for a replay. */
+export function consumeConnectToken(token: string | undefined | null): boolean {
+  const held = getFlag('whoop_connect_token') as ConnectTicket | undefined
+  if (!held || !token) return false
+  // Cleared whatever the outcome: a wrong guess burns the pending ticket rather
+  // than leaving it up for another try.
+  setFlag('whoop_connect_token', null)
+  return held.token === token && Date.now() < held.expiresAt
+}
+
+/** Refused because the grant belongs to somebody else's WHOOP account. */
+export class ForeignAccount extends Error {}
+
+/**
+ * Pin the grant to one WHOOP account, recorded on the first successful connect.
+ *
+ * Catches a stranger who somehow got past the ticket, and the likelier case:
+ * authorising the wrong account by accident, which otherwise starts quietly
+ * filling the log with somebody else's sleep and strain.
+ */
+export function rememberOrCheckAccount(userId: number): void {
+  const known = getFlag('whoop_user_id') as number | undefined
+  if (known == null) {
+    setFlag('whoop_user_id', userId)
+    return
+  }
+  if (known !== userId) {
+    throw new ForeignAccount(
+      `that is a different WHOOP account (${userId}); this log is pinned to ${known}`,
+    )
+  }
+}
+
+/**
  * The URL to open in a browser once. `state` is generated here and checked on
  * the way back, so a callback that did not originate from this process is
  * rejected rather than exchanged.
  */
 export function authorizeUrl(): string {
-  const state = Math.random().toString(36).slice(2) + Date.now().toString(36)
+  const state = randomToken()
   setFlag('whoop_state', state)
   const q = new URLSearchParams({
     client_id: WHOOP_CLIENT_ID,
@@ -172,9 +232,30 @@ export async function exchangeCode(code: string, state: string): Promise<Tokens>
     redirect_uri: WHOOP_REDIRECT,
   }))
   setFlag('whoop_tokens', tokens)
+
+  // Pin the account before anything trusts this grant. The tokens must be
+  // stored first, because reading the profile needs them — so a foreign
+  // account is unwound rather than prevented, a window of one request. A
+  // profile that cannot be read at all also fails the connect: it is an
+  // interactive flow you can simply retry, and a grant nobody verified is
+  // worse than one more trip to the browser.
+  try {
+    rememberOrCheckAccount(await profileUserId())
+  } catch (e) {
+    forgetTokens()
+    throw e
+  }
+
   // A fresh grant re-arms the one notification the next disconnection gets.
   setFlag('whoop_disconnect_notified', null)
   return tokens
+}
+
+/** Whose WHOOP account the stored grant belongs to. */
+async function profileUserId(): Promise<number> {
+  const body = (await get('/user/profile/basic')) as { user_id?: number }
+  if (typeof body.user_id !== 'number') throw new Error('WHOOP profile carried no user_id')
+  return body.user_id
 }
 
 /**
