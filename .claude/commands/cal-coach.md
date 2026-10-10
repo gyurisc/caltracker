@@ -85,6 +85,11 @@ section.
   taking the budget again, a better-spread day than yesterday. Do not work out what
   yesterday had reached by this hour.
 
+The message also carries `Next check-in: …`. Close with it in one short line, so the
+user knows when you will look again — for example *"Következő check-in: 16:00."* It
+is when you will look, not when to eat: never time meals to the check-ins, and never
+suggest waiting for one before eating. Meals go where hunger and the day put them.
+
 ## Follow-ups
 
 When the message starts with `Follow-up:`, the user is replying to something you

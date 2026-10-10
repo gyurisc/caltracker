@@ -10,6 +10,7 @@ describe('reading the shared prompt', () => {
   it('keeps the instructions', () => {
     expect(prompt).toContain('nutrition and macro coach')
     expect(prompt).toContain('## Follow-ups')
+    expect(prompt).toContain('Next check-in:')
     expect(prompt).toContain('Calories are a constraint')
   })
 

@@ -36,10 +36,11 @@ if [ -z "$SLOT" ]; then
   elif [ "$HOUR" -lt 15 ]; then SLOT=midday
   else SLOT=evening; fi
 fi
+# NEXT mirrors StartCalendarInterval in scripts/com.caltrack.coach.plist.
 case "$SLOT" in
-  morning) TITLE="Reggeli coach" ;;
-  midday)  TITLE="Déli coach" ;;
-  evening) TITLE="Esti coach" ;;
+  morning) TITLE="Reggeli coach"; NEXT="11:00 today" ;;
+  midday)  TITLE="Déli coach";    NEXT="16:00 today" ;;
+  evening) TITLE="Esti coach";    NEXT="07:00 tomorrow" ;;
   *) say "unknown slot: $SLOT"; exit 1 ;;
 esac
 
@@ -62,8 +63,8 @@ BODY="$(awk '/^---$/{n++; next} n>=2' .claude/commands/cal-coach.md \
 # run has no user message — which came out English on the first test. Say it.
 LANG_NOTE="Ez egy utemezett uzenet, nincs felhasznaloi kerdes. Valaszolj magyarul."
 
-REPLY="$(printf 'Check-in: %s\n\nYesterday:\n\n%s\n\nToday:\n\n%s\n\n%s\n\n%s' \
-  "$SLOT" "$YESTERDAY" "$TODAY" "$BODY" "$LANG_NOTE" | claude -p 2>&1)"
+REPLY="$(printf 'Check-in: %s\nNext check-in: %s\n\nYesterday:\n\n%s\n\nToday:\n\n%s\n\n%s\n\n%s' \
+  "$SLOT" "$NEXT" "$YESTERDAY" "$TODAY" "$BODY" "$LANG_NOTE" | claude -p 2>&1)"
 if [ -z "$REPLY" ]; then say "claude returned nothing"; exit 1; fi
 
 # The compass is COACH_MARK in src/coach.ts: a Telegram reply to a message that
