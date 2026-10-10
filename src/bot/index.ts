@@ -6,7 +6,7 @@ import {
 } from '../db.ts'
 import { formatFoodCommand, parseAliasCommand, parseFoodCommand } from '../foodcmd.ts'
 import { parseTargetCommand, patchFor } from '../targetcmd.ts'
-import { bareFoodName, parseMessage } from '../parse.ts'
+import { bareFoodName } from '../parse.ts'
 import { nearMatches } from '../similar.ts'
 import { activityLabel, deriveKcal, normalizeActivity, targetKcal } from '../nutrition.ts'
 import { round1 } from '../nutrition.ts'
@@ -664,23 +664,12 @@ export function createBot(): Bot {
     // A reply to a coach message is a follow-up question, never food. Only the
     // bot's own messages count: a quote of something the owner typed is not advice.
     const quoted = ctx.message.reply_to_message
-    const repliesToBot = quoted?.from?.id === ctx.me.id
-    if (repliesToBot && isCoachMessage(quoted.text ?? '')) {
+    if (quoted?.from?.id === ctx.me.id && isCoachMessage(quoted.text ?? '')) {
       return answerCoach(ctx, text, quoted.text)
     }
 
     const corrected = await applyCorrection(ctx, text)
     if (corrected) return
-
-    // Coach answers from before COACH_MARK carry no mark, and a reply to one
-    // was refused as unknown food. Food in a reply still logs; anything the
-    // parser cannot read at all is a question about the quoted message.
-    if (repliesToBot) {
-      const parsed = parseMessage(text, undefined, vocabTable())
-      if (!parsed.ok && parsed.needsState.length === 0 && parsed.implausible.length === 0) {
-        return answerCoach(ctx, text, quoted.text ?? quoted.caption)
-      }
-    }
 
     const result = logText(text)
     if (!result.ok) {
