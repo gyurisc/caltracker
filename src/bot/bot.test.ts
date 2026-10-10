@@ -642,6 +642,24 @@ describe('replying to a coach message', () => {
     expect(edited.at(-1)!.startsWith('🧭')).toBe(true)
   })
 
+  it('sends a question to the coach even when the quoted message has no mark', async () => {
+    // Coach answers from before the mark existed look like any other bot
+    // message. A reply that is not food is a question, never a parse miss.
+    stubCoach('igen, 150 g skyr')
+    const rows = foods().length
+    const errors = misses()
+
+    await bot.handleUpdate(replyTo(
+      '0 / 1,600 kcal and 0 g protein, 1,600 kcal left',
+      'What else i should add to breakfast? Skyr?',
+    ) as never)
+
+    expect(foods()).toHaveLength(rows)
+    expect(misses()).toBe(errors)
+    expect(asked[0]!.messages.map((m) => m.content)).toContain('0 / 1,600 kcal and 0 g protein, 1,600 kcal left')
+    expect(edited.at(-1)).toContain('igen, 150 g skyr')
+  })
+
   it('still logs food sent as a reply to any other bot message', async () => {
     const rows = foods().length
     await bot.handleUpdate(replyTo('+ black coffee · 2 kcal', 'black coffee') as never)
