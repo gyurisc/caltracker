@@ -307,6 +307,19 @@ export function createBot(): Bot {
     await next()
   })
 
+  // grammY routes a command only when Telegram marks it `bot_command`. A pasted
+  // code block arrives marked `pre` or `code` instead, so `/food …` copied from
+  // a chat answered "unknown command". The leading slash is what decides.
+  bot.use(async (ctx, next) => {
+    const msg = ctx.message
+    const text = msg?.text
+    if (msg && text?.startsWith('/') && !msg.entities?.some((e) => e.type === 'bot_command' && e.offset === 0)) {
+      const length = text.split(/\s/)[0]!.length
+      msg.entities = [{ type: 'bot_command', offset: 0, length }, ...(msg.entities ?? [])]
+    }
+    await next()
+  })
+
   bot.command('start', (ctx) => ctx.reply(`caltrack. ${todayLine()}\n/help for commands.`))
 
   bot.command('help', (ctx) =>

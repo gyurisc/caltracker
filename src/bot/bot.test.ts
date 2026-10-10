@@ -654,3 +654,17 @@ describe('replying to a coach message', () => {
     expect(foods()).toHaveLength(rows + 1)
   })
 })
+
+describe('a command pasted as monospace', () => {
+  // Pasting a code block keeps its formatting: Telegram then marks the text as
+  // `code` or `pre` and never as `bot_command`, so grammY does not route it.
+  it('still runs, rather than answering "unknown command"', async () => {
+    const text = '/food pasted fizz per100 p1 c2 f0'
+    const u = update(OWNER, 'x')
+    await bot.handleUpdate({
+      ...u,
+      message: { ...u.message, text, entities: [{ type: 'pre', offset: 0, length: text.length }] },
+    } as never)
+    expect(sent.at(-1)).toContain('added pasted fizz')
+  })
+})
