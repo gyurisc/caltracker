@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { askCoach, coachPrompt, forget, historyFor, remember } from './coach.ts'
+import {
+  askCoach, COACH_MARK, coachPrompt, forget, historyFor, isCoachMessage, remember, telegramMarkdown,
+  withQuoted,
+} from './coach.ts'
 
 describe('reading the shared prompt', () => {
   const prompt = coachPrompt()
@@ -30,6 +33,16 @@ describe('asking the coach', () => {
     expect(messages[0].role).toBe('system')
     expect(messages.at(-1).content).toContain('1,200 / 1,600 kcal')
     expect(messages.at(-1).content).toContain('what now?')
+  })
+
+  it('hands over yesterday too, so an evening comparison has something to compare', async () => {
+    let sent: any
+    const spy = async (body: unknown) => { sent = body; return { choices: [{ message: { content: 'ok' } }] } }
+    await askCoach('what now?', [], spy as never, 'TODAY-LOG', 'YESTERDAY-LOG')
+
+    const last: string = sent.messages.at(-1).content
+    expect(last).toContain('YESTERDAY-LOG')
+    expect(last.indexOf('YESTERDAY-LOG')).toBeLessThan(last.indexOf('TODAY-LOG'))
   })
 
   it('carries the recent exchange so a follow-up lands', async () => {
@@ -75,5 +88,34 @@ describe('the coach thread', () => {
     forget(3); forget(4)
     remember(3, [{ role: 'user', content: 'mine' }])
     expect(historyFor(4)).toEqual([])
+  })
+})
+
+describe('continuing from a coach message', () => {
+  it('knows a coach message by its mark', () => {
+    expect(isCoachMessage(`${COACH_MARK} Reggeli coach\n\n0 / 1600 kcal`)).toBe(true)
+    expect(isCoachMessage('+ black coffee · 2 kcal')).toBe(false)
+  })
+
+  it('puts the quoted message into the thread as the coach\'s own words', () => {
+    // A scheduled message is sent by another process, so the bot never
+    // remembered it. The quote is the only record of what was advised.
+    const h = withQuoted([], `${COACH_MARK} eat 250 g skyr`)
+    expect(h).toEqual([{ role: 'assistant', content: `${COACH_MARK} eat 250 g skyr` }])
+  })
+
+  it('does not repeat a quote that is already the last thing said', () => {
+    const turns = [
+      { role: 'user' as const, content: 'what now?' },
+      { role: 'assistant' as const, content: 'eat skyr' },
+    ]
+    expect(withQuoted(turns, 'eat skyr')).toEqual(turns)
+  })
+})
+
+describe('formatting for Telegram', () => {
+  it('turns **bold** into the single-star bold Telegram reads', () => {
+    // Legacy Markdown has no `**`; sent as-is, the stars show up in the chat.
+    expect(telegramMarkdown('**0 / 1600 kcal**, 0 g P')).toBe('*0 / 1600 kcal*, 0 g P')
   })
 })

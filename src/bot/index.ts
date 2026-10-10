@@ -20,7 +20,10 @@ import { latestMeal, put as putPending, replace as replacePending, take as takeP
 import { parseCorrection, targetIndex } from '../correction.ts'
 import { prepareImage, readPrepared, type VisionItem } from '../vision.ts'
 import { deletePhoto, readPhoto as readStoredPhoto, savePhoto } from '../photos.ts'
-import { askCoach, forget, historyFor, remember } from '../coach.ts'
+import {
+  askCoach, COACH_MARK, forget, historyFor, isCoachMessage, remember, telegramMarkdown, type Turn,
+  withQuoted,
+} from '../coach.ts'
 import {
   configured as whoopConfigured, connected as whoopConnected, mintConnectToken,
   forgetTokens as forgetWhoop, syncRecent as syncWhoop,
@@ -86,6 +89,42 @@ async function downloadPhoto(ctx: {
  *
  * Returns true when the message was consumed as a correction.
  */
+/**
+ * Ask the coach and answer in place. `quoted` is the coach message a Telegram
+ * reply points at — the scheduled ones were sent by another process, so this
+ * thread has never seen them until the reply brings one in.
+ */
+async function answerCoach(ctx: Context, question: string, quoted?: string): Promise<unknown> {
+  const chatId = ctx.chat!.id
+  // The model reasons for half a minute. A typing indicator lasts five
+  // seconds, so without a placeholder the bot simply looks dead.
+  const note = await ctx.reply('thinking about today…')
+
+  const before = historyFor(chatId)
+  const history = quoted ? withQuoted(before, quoted) : before
+  const answer = await askCoach(question, history)
+  if (!answer.ok) {
+    return ctx.api.editMessageText(note.chat.id, note.message_id, answer.error)
+  }
+
+  // Marked, so replying to this answer continues the thread as well.
+  const text = `${COACH_MARK} ${answer.text}`
+  const added: Turn[] = history.slice(before.length)
+  remember(chatId, [
+    ...added,
+    { role: 'user', content: question || 'How should I carry on eating today?' },
+    { role: 'assistant', content: text },
+  ])
+  // Edited in place when it fits; a long answer needs its own messages, so
+  // the placeholder becomes the first of them.
+  const parts = chunk(text)
+  await ctx.api.editMessageText(note.chat.id, note.message_id, telegramMarkdown(parts[0]!), {
+    parse_mode: 'Markdown',
+  }).catch(() => ctx.api.editMessageText(note.chat.id, note.message_id, parts[0]!))
+  for (const part of parts.slice(1)) await ctx.reply(part)
+  return undefined
+}
+
 async function applyCorrection(ctx: Context, text: string): Promise<boolean> {
   const chatId = ctx.chat?.id
   if (chatId == null) return false
@@ -469,31 +508,7 @@ export function createBot(): Bot {
     return ctx.reply(`weight ${kg} kg · ${localDate()}`)
   })
 
-  bot.command('coach', async (ctx) => {
-    const question = (ctx.match ?? '').toString().trim()
-    const chatId = ctx.chat.id
-    // The model reasons for half a minute. A typing indicator lasts five
-    // seconds, so without a placeholder the bot simply looks dead.
-    const note = await ctx.reply('thinking about today…')
-
-    const answer = await askCoach(question, historyFor(chatId))
-    if (!answer.ok) {
-      return ctx.api.editMessageText(note.chat.id, note.message_id, answer.error)
-    }
-
-    remember(chatId, [
-      { role: 'user', content: question || 'How should I carry on eating today?' },
-      { role: 'assistant', content: answer.text },
-    ])
-    // Edited in place when it fits; a long answer needs its own messages, so
-    // the placeholder becomes the first of them.
-    const parts = chunk(answer.text)
-    await ctx.api.editMessageText(note.chat.id, note.message_id, parts[0]!, {
-      parse_mode: 'Markdown',
-    }).catch(() => ctx.api.editMessageText(note.chat.id, note.message_id, parts[0]!))
-    for (const part of parts.slice(1)) await ctx.reply(part)
-    return undefined
-  })
+  bot.command('coach', (ctx) => answerCoach(ctx, (ctx.match ?? '').toString().trim()))
 
   // A follow-up needs a clean slate sometimes — yesterday's thread advising on
   // yesterday's log is worse than starting over.
@@ -645,6 +660,13 @@ export function createBot(): Bot {
   bot.on('message:text', async (ctx) => {
     const text = ctx.message.text.trim()
     if (text.startsWith('/')) return ctx.reply('unknown command. /help')
+
+    // A reply to a coach message is a follow-up question, never food. Only the
+    // bot's own messages count: a quote of something the owner typed is not advice.
+    const quoted = ctx.message.reply_to_message
+    if (quoted?.from?.id === ctx.me.id && isCoachMessage(quoted.text ?? '')) {
+      return answerCoach(ctx, text, quoted.text)
+    }
 
     const corrected = await applyCorrection(ctx, text)
     if (corrected) return

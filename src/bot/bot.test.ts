@@ -1,5 +1,5 @@
 import { existsSync, rmSync } from 'node:fs'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { VisionItem } from '../vision.ts'
 
 /**
@@ -13,6 +13,7 @@ const STRANGER = 9_999_999
 let bot: Awaited<ReturnType<typeof boot>>['bot']
 let db: Awaited<ReturnType<typeof boot>>['db']
 let sent: string[]
+let edited: string[]
 
 async function boot() {
   for (const f of [TEST_DB, `${TEST_DB}-wal`, `${TEST_DB}-shm`]) if (existsSync(f)) rmSync(f)
@@ -30,9 +31,15 @@ async function boot() {
     id: 1, is_bot: true, first_name: 'caltrack', username: 'caltrackbot',
   } as typeof bot.botInfo
   sent = []
+  edited = []
   bot.api.config.use(async (_prev, method, payload) => {
     if (method === 'sendMessage') sent.push(String((payload as { text: string }).text))
-    return { ok: true, result: {} } as never
+    if (method === 'editMessageText') edited.push(String((payload as { text: string }).text))
+    // A sent message comes back with its chat, as Telegram's does — the coach
+    // edits its placeholder by that id.
+    const chat = { id: Number((payload as { chat_id?: number }).chat_id), type: 'private' }
+    const result = method === 'sendMessage' ? { message_id: sent.length, date: 0, chat } : {}
+    return { ok: true, result } as never
   })
   return { bot, db }
 }
@@ -574,5 +581,76 @@ describe('/target is the only way left to move a goal', () => {
     const before = getSettings().proteinGoal
     await bot.handleUpdate(update(STRANGER, '/target protein 10') as never)
     expect(getSettings().proteinGoal).toBe(before)
+  })
+})
+
+describe('replying to a coach message', () => {
+  // The coach model is the only network call here; answer it locally and keep
+  // what it was sent, so the test can see what the coach was told.
+  let asked: { messages: { role: string; content: string }[] }[]
+  const stubCoach = (answer: string) => {
+    asked = []
+    vi.stubGlobal('fetch', async (_url: string, init: { body: string }) => {
+      asked.push(JSON.parse(init.body))
+      return new Response(JSON.stringify({ choices: [{ message: { content: answer } }] }))
+    })
+  }
+  afterEach(() => vi.unstubAllGlobals())
+
+  const replyTo = (quoted: string, text: string, fromBot = true) => {
+    const u = update(OWNER, text)
+    return {
+      ...u,
+      message: {
+        ...u.message,
+        reply_to_message: {
+          message_id: 7,
+          date: u.message.date,
+          chat: u.message.chat,
+          from: fromBot
+            ? { id: 1, is_bot: true, first_name: 'caltrack' }
+            : { id: OWNER, is_bot: false, first_name: 'k' },
+          text: quoted,
+        },
+      },
+    }
+  }
+  const misses = () =>
+    (db.prepare(`SELECT COUNT(*) AS n FROM events WHERE kind = 'error'`).get() as { n: number }).n
+
+  it('asks the coach with the quoted message, and logs nothing', async () => {
+    stubCoach('igen, keverd bele')
+    const rows = foods().length
+    const errors = misses()
+
+    await bot.handleUpdate(replyTo(
+      '🧭 Reggeli coach\n\n40 g zabpehely, 250 g skyr és 30 g vegán fehérje',
+      'should I add the vegan protein to my zabpehely?',
+    ) as never)
+
+    expect(foods()).toHaveLength(rows)
+    expect(misses()).toBe(errors)
+    const said = asked[0]!.messages.map((m) => m.content)
+    expect(said).toContain('🧭 Reggeli coach\n\n40 g zabpehely, 250 g skyr és 30 g vegán fehérje')
+    expect(said.at(-1)).toContain('should I add the vegan protein to my zabpehely?')
+    expect(edited.at(-1)).toContain('igen, keverd bele')
+  })
+
+  it('marks the answer, so a reply to the answer continues too', async () => {
+    stubCoach('egy kis tejjel')
+    await bot.handleUpdate(replyTo('🧭 igen, keverd bele', 'too thick?') as never)
+    expect(edited.at(-1)!.startsWith('🧭')).toBe(true)
+  })
+
+  it('still logs food sent as a reply to any other bot message', async () => {
+    const rows = foods().length
+    await bot.handleUpdate(replyTo('+ black coffee · 2 kcal', 'black coffee') as never)
+    expect(foods()).toHaveLength(rows + 1)
+  })
+
+  it('does not treat a reply to my own message as a coach question', async () => {
+    const rows = foods().length
+    await bot.handleUpdate(replyTo('🧭 copied text', 'black coffee', false) as never)
+    expect(foods()).toHaveLength(rows + 1)
   })
 })

@@ -12,7 +12,7 @@
  * what was eaten is a coach making up the numbers it then advises on.
  */
 import { readFileSync } from 'node:fs'
-import { fromRoot } from './config.ts'
+import { addDays, fromRoot, localDate } from './config.ts'
 import { todayReport } from './report.ts'
 import { callXai } from './vision.ts'
 
@@ -24,6 +24,35 @@ export const HISTORY_TURNS = 6
 export const HISTORY_TTL_MS = 3 * 60 * 60 * 1000
 
 export type Turn = { role: 'user' | 'assistant'; content: string }
+
+/**
+ * Opens every coach message, scheduled or asked for. A Telegram reply to a
+ * message carrying it is a follow-up, not food — and it is the only way to tell,
+ * because the scheduled ones come from scripts/coach-notify.sh, another process
+ * that writes the same character.
+ */
+export const COACH_MARK = '🧭'
+
+export const isCoachMessage = (text: string): boolean => text.trimStart().startsWith(COACH_MARK)
+
+/**
+ * The thread, with the message being replied to as the coach's last word.
+ *
+ * A scheduled message never passed through this process, so the quote is the
+ * only record of what was advised. A `/coach` answer already is the last turn,
+ * and repeating it would spend the history on a duplicate.
+ */
+/**
+ * Models write `**bold**`; Telegram's Markdown mode bolds with one star and
+ * prints the second pair literally. The scheduled script does the same in sed.
+ */
+export const telegramMarkdown = (text: string): string => text.replace(/\*\*/g, '*')
+
+export function withQuoted(history: Turn[], quoted: string): Turn[] {
+  const last = history.at(-1)
+  if (last?.role === 'assistant' && last.content === quoted) return history
+  return [...history, { role: 'assistant', content: quoted }]
+}
 
 /**
  * The instructions, minus the slash-command scaffolding.
@@ -57,6 +86,7 @@ export async function askCoach(
   history: Turn[] = [],
   chat: ChatFn = callXai,
   report = todayReport(),
+  yesterday = todayReport(addDays(localDate(), -1)),
 ): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
   try {
     const res = (await chat({
@@ -68,7 +98,8 @@ export async function askCoach(
         ...history.slice(-HISTORY_TURNS),
         {
           role: 'user',
-          content: `Today's log:\n\n${report}\n\n${question || 'How should I carry on eating today?'}`,
+          // Same labels, same order as the slash command and the scheduled run.
+          content: `Yesterday:\n\n${yesterday}\n\nToday:\n\n${report}\n\n${question || 'How should I carry on eating today?'}`,
         },
       ],
     })) as { choices?: { message?: { content?: string } }[] }

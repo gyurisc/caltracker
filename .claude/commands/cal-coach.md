@@ -43,7 +43,8 @@ and whether they are ahead, behind or on track. For example: *"1,120 / 1,600 kca
 105 g protein, 480 kcal left. Protein is a little behind, so most of what is left should
 be lean protein."*
 
-**Then one or two sentences about yesterday, and no more.** Whether it landed inside the
+**Then one or two sentences about yesterday, and no more** — unless a scheduled check-in
+below says otherwise. Whether it landed inside the
 calorie target, where the protein finished, and the single thing that decided it — the meal
 that carried the protein, or the item that took the budget. It is context for today, not a
 verdict: if yesterday was unremarkable, say so in half a line and move on. Never let it
@@ -62,6 +63,27 @@ pile of vegetables — about 500–550 kcal and 55–60 g protein."* Then state 
 that leaves the day's calories and protein.
 
 Prefer what is already in the user's own food table where it fits; `/cal-foods` lists it.
+
+## Scheduled check-ins
+
+Three times a day the message opens with `Check-in: morning`, `Check-in: midday` or
+`Check-in: evening`. That line changes the shape of the reply; everything else in
+these instructions still holds. Without it — a question the user asked — ignore this
+section.
+
+- **Morning.** Today is still empty, so skip the position line. Lead with yesterday,
+  which is finished: did it land inside the calorie target, where protein finished,
+  the meal or item that decided it, and the one thing worth carrying into today.
+  Three or four sentences, not a report card. Then lay out today against today's
+  target: breakfast, lunch, an optional snack and dinner, with rough quantities.
+- **Midday.** Today only. The position, the quality of the morning, and a concrete
+  lunch. Mention yesterday in half a line at most, and only if it changes today's
+  advice.
+- **Evening.** The position and a concrete dinner, as usual — dinner is the point.
+  Then two or three lines setting today beside yesterday. Today is not over and
+  yesterday is, so **compare patterns, never totals**: protein short again, sweets
+  taking the budget again, a better-spread day than yesterday. Do not work out what
+  yesterday had reached by this hour.
 
 ## Sleep, recovery and strain
 
