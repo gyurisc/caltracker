@@ -102,7 +102,9 @@ async function answerCoach(ctx: Context, question: string, quoted?: string): Pro
 
   const before = historyFor(chatId)
   const history = quoted ? withQuoted(before, quoted) : before
-  const answer = await askCoach(question, history)
+  const answer = await askCoach(question, history, undefined, undefined, undefined, {
+    followUp: quoted !== undefined,
+  })
   if (!answer.ok) {
     return ctx.api.editMessageText(note.chat.id, note.message_id, answer.error)
   }

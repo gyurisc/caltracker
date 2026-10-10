@@ -632,7 +632,7 @@ describe('replying to a coach message', () => {
     expect(misses()).toBe(errors)
     const said = asked[0]!.messages.map((m) => m.content)
     expect(said).toContain('🧭 Reggeli coach\n\n40 g zabpehely, 250 g skyr és 30 g vegán fehérje')
-    expect(said.at(-1)).toContain('should I add the vegan protein to my zabpehely?')
+    expect(said.at(-1)).toContain('Follow-up: should I add the vegan protein to my zabpehely?')
     expect(edited.at(-1)).toContain('igen, keverd bele')
   })
 

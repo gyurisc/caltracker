@@ -9,6 +9,7 @@ describe('reading the shared prompt', () => {
 
   it('keeps the instructions', () => {
     expect(prompt).toContain('nutrition and macro coach')
+    expect(prompt).toContain('## Follow-ups')
     expect(prompt).toContain('Calories are a constraint')
   })
 
@@ -43,6 +44,20 @@ describe('asking the coach', () => {
     const last: string = sent.messages.at(-1).content
     expect(last).toContain('YESTERDAY-LOG')
     expect(last.indexOf('YESTERDAY-LOG')).toBeLessThan(last.indexOf('TODAY-LOG'))
+  })
+
+  it('marks a follow-up, so the coach answers it instead of starting the day over', async () => {
+    let sent: any
+    const spy = async (body: unknown) => { sent = body; return { choices: [{ message: { content: 'ok' } }] } }
+    await askCoach('I screwed up yesterday', [], spy as never, 'log', 'log', { followUp: true })
+    expect(sent.messages.at(-1).content).toContain('Follow-up: I screwed up yesterday')
+  })
+
+  it('leaves a fresh question unmarked', async () => {
+    let sent: any
+    const spy = async (body: unknown) => { sent = body; return { choices: [{ message: { content: 'ok' } }] } }
+    await askCoach('what now?', [], spy as never, 'log', 'log')
+    expect(sent.messages.at(-1).content).not.toContain('Follow-up:')
   })
 
   it('carries the recent exchange so a follow-up lands', async () => {

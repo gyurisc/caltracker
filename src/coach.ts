@@ -87,6 +87,7 @@ export async function askCoach(
   chat: ChatFn = callXai,
   report = todayReport(),
   yesterday = todayReport(addDays(localDate(), -1)),
+  opts: { followUp?: boolean } = {},
 ): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
   try {
     const res = (await chat({
@@ -99,7 +100,11 @@ export async function askCoach(
         {
           role: 'user',
           // Same labels, same order as the slash command and the scheduled run.
-          content: `Yesterday:\n\n${yesterday}\n\nToday:\n\n${report}\n\n${question || 'How should I carry on eating today?'}`,
+          // `Follow-up:` is what the prompt keys on to answer the message
+          // rather than rerun the whole report on top of it.
+          content: `Yesterday:\n\n${yesterday}\n\nToday:\n\n${report}\n\n${
+            opts.followUp ? `Follow-up: ${question}` : question || 'How should I carry on eating today?'
+          }`,
         },
       ],
     })) as { choices?: { message?: { content?: string } }[] }
