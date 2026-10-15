@@ -227,35 +227,17 @@ part buys the refresh token; without it the grant dies in an hour.
 
 ## 7. The coach reports
 
-The 07:00 / 11:00 / 16:00 messages run under launchd on the Mac. They do not
-come with you, and they fail by simply never arriving.
-`scripts/coach-notify.sh` shells out to `claude`, so it must be installed and
-logged in **as the `caltrack` user**.
+Nothing to install. The 07:00 / 11:00 / 16:00 messages are sent by the server
+itself (`src/checkin.ts`), through Grok with the same prompt as `/coach`, so
+they come along with the process and need only `XAI_API_KEY` in `.env`. The
+hours are local to `TZ`, not the box's UTC clock.
 
-```ini
-# /etc/systemd/system/caltrack-coach.service
-[Service]
-Type=oneshot
-User=caltrack
-WorkingDirectory=/srv/http/caltrack
-ExecStart=/srv/http/caltrack/scripts/coach-notify.sh
-```
+A server that was down at a slot sends only the latest missed one when it comes
+back, and nothing after 22:00. What was last sent is the `flag:coach_last`
+setting, so a restart does not repeat a message.
 
-```ini
-# /etc/systemd/system/caltrack-coach.timer
-[Timer]
-OnCalendar=*-*-* 07,11,16:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
-
-`Persistent=true` is launchd's catch-up behaviour: a fire missed while the box
-was down runs once after it returns instead of being skipped.
-
-**Check:** `scripts/coach-notify.sh --dry-run` prints a report and sends
-nothing; `systemctl start caltrack-coach` sends a real one.
+**Check:** `npx tsx src/checkin.ts evening` prints that check-in and sends
+nothing; `data/coach.log` records every real one, and every failure.
 
 ## 8. Backups
 

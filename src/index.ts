@@ -1,5 +1,7 @@
 import { serve } from '@hono/node-server'
 import { startSync as startWhoopSync } from './whoop.ts'
+import { startCheckIns } from './checkin.ts'
+import { telegramMarkdown } from './coach.ts'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { existsSync } from 'node:fs'
 import { Hono } from 'hono'
@@ -92,6 +94,14 @@ if (TELEGRAM_BOT_TOKEN && TELEGRAM_USER_ID) {
   // only discovered days later, by wondering where the numbers went.
   startWhoopSync((text) => {
     void bot.api.sendMessage(TELEGRAM_USER_ID, text).catch(() => {})
+  })
+
+  // 07:00, 11:00 and 16:00 coach messages — see src/checkin.ts. A stray `_` or
+  // `[` makes Telegram refuse Markdown outright, so that falls back to plain.
+  startCheckIns(async (text, markdown) => {
+    if (!markdown) return bot.api.sendMessage(TELEGRAM_USER_ID, text)
+    return bot.api.sendMessage(TELEGRAM_USER_ID, telegramMarkdown(text), { parse_mode: 'Markdown' })
+      .catch(() => bot.api.sendMessage(TELEGRAM_USER_ID, text))
   })
 } else {
   console.log('[bot]  disabled — set TELEGRAM_BOT_TOKEN and TELEGRAM_USER_ID in .env')

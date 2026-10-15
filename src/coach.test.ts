@@ -54,6 +54,18 @@ describe('asking the coach', () => {
     expect(sent.messages.at(-1).content).toContain('Follow-up: I screwed up yesterday')
   })
 
+  it('opens a scheduled check-in with the lines the prompt keys on, in Hungarian', async () => {
+    let sent: any
+    const spy = async (body: unknown) => { sent = body; return { choices: [{ message: { content: 'ok' } }] } }
+    await askCoach('', [], spy as never, 'log', 'log', { checkIn: { slot: 'evening', next: '07:00 tomorrow' } })
+
+    const last: string = sent.messages.at(-1).content
+    expect(last.startsWith('Check-in: evening\nNext check-in: 07:00 tomorrow\n\nYesterday:')).toBe(true)
+    // A scheduled run has no user message to take the language from.
+    expect(last).toContain('Válaszolj magyarul')
+    expect(last).not.toContain('How should I carry on eating today?')
+  })
+
   it('leaves a fresh question unmarked', async () => {
     let sent: any
     const spy = async (body: unknown) => { sent = body; return { choices: [{ message: { content: 'ok' } }] } }

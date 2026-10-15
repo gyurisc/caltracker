@@ -10,6 +10,20 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# A restart puts whatever is on disk in front of the bot and the scheduled
+# check-ins, so a broken edit should fail here, not at 07:00. SKIP_TESTS=1 skips.
+if [ "${1:-restart}" = restart ] && [ "${SKIP_TESTS:-}" != 1 ]; then
+  echo "testing before restart…"
+  OUT="$(mktemp)"
+  if ! { pnpm -s test && pnpm -s typecheck; } > "$OUT" 2>&1; then
+    tail -30 "$OUT" >&2
+    rm -f "$OUT"
+    echo "tests or typecheck failed — not restarting (SKIP_TESTS=1 to force)" >&2
+    exit 1
+  fi
+  rm -f "$OUT"
+fi
+
 PORT="$(grep -E '^PORT=' .env 2>/dev/null | tail -1 | cut -d= -f2 | tr -d ' \r')"
 PORT="${PORT:-3000}"
 LOG="$ROOT/data/caltrack.log"

@@ -27,9 +27,8 @@ export type Turn = { role: 'user' | 'assistant'; content: string }
 
 /**
  * Opens every coach message, scheduled or asked for. A Telegram reply to a
- * message carrying it is a follow-up, not food — and it is the only way to tell,
- * because the scheduled ones come from scripts/coach-notify.sh, another process
- * that writes the same character.
+ * message carrying it is a follow-up, not food. The scheduled check-ins
+ * (src/checkin.ts) carry it too, and a reply to one is the usual way in.
  */
 export const COACH_MARK = '🧭'
 
@@ -44,7 +43,7 @@ export const isCoachMessage = (text: string): boolean => text.trimStart().starts
  */
 /**
  * Models write `**bold**`; Telegram's Markdown mode bolds with one star and
- * prints the second pair literally. The scheduled script does the same in sed.
+ * prints the second pair literally.
  */
 export const telegramMarkdown = (text: string): string => text.replace(/\*\*/g, '*')
 
@@ -87,8 +86,16 @@ export async function askCoach(
   chat: ChatFn = callXai,
   report = todayReport(),
   yesterday = todayReport(addDays(localDate(), -1)),
-  opts: { followUp?: boolean } = {},
+  opts: { followUp?: boolean; checkIn?: { slot: string; next: string } } = {},
 ): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  // The prompt changes shape on these two opening lines. A scheduled run has no
+  // user message to take the language from — the first test came out English.
+  const opening = opts.checkIn
+    ? `Check-in: ${opts.checkIn.slot}\nNext check-in: ${opts.checkIn.next}\n\n`
+    : ''
+  const ask = opts.checkIn
+    ? 'Ez egy ütemezett üzenet, nincs felhasználói kérdés. Válaszolj magyarul.'
+    : opts.followUp ? `Follow-up: ${question}` : question || 'How should I carry on eating today?'
   try {
     const res = (await chat({
       model: COACH_MODEL,
@@ -99,12 +106,10 @@ export async function askCoach(
         ...history.slice(-HISTORY_TURNS),
         {
           role: 'user',
-          // Same labels, same order as the slash command and the scheduled run.
-          // `Follow-up:` is what the prompt keys on to answer the message
-          // rather than rerun the whole report on top of it.
-          content: `Yesterday:\n\n${yesterday}\n\nToday:\n\n${report}\n\n${
-            opts.followUp ? `Follow-up: ${question}` : question || 'How should I carry on eating today?'
-          }`,
+          // Same labels, same order as the slash command. `Follow-up:` is what
+          // the prompt keys on to answer the message rather than rerun the
+          // whole report on top of it.
+          content: `${opening}Yesterday:\n\n${yesterday}\n\nToday:\n\n${report}\n\n${ask}`,
         },
       ],
     })) as { choices?: { message?: { content?: string } }[] }
