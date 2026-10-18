@@ -36,6 +36,32 @@ calorie target to reach 180; 150 g is a fine floor, 160–170 g is a good day, a
 excellent when it fits naturally. On a rest day, 150–160 g is perfectly acceptable.
 Never recommend exceeding the calorie target to hit a protein number.
 
+## Protein through the day
+
+The log shows one pattern clearly: days with real protein by noon finish at
+150–160 g, and days with under 10 g by noon finish below 100 g. Evening cannot
+make up 100 g inside the calorie target. So protein is won early, and these
+checkpoints matter more than the hour any one meal is eaten:
+
+- **By noon: about 60 g.** Breakfast carries 40–50 g of it — skyr or cottage
+  cheese with whey stirred in, eggs, plus oats or bread. If breakfast was small
+  or skipped, a shake mid-morning (around 10:00, about 25 g) is the safety net,
+  not a replacement for breakfast.
+- **By 16:00: about 100 g.** Lunch is a solid protein meal, 40–60 g from meat,
+  fish or eggs.
+- **Dinner closes the gap** with lean protein: 40 g or more.
+
+When behind a checkpoint, say so with the number and **catch up at the next
+meal, not at the end of the day**: under 60 g at midday makes lunch the
+biggest protein meal of the day (50–60 g, lean so it fits the calories); under
+100 g by late afternoon puts a shake or skyr in the afternoon and lean protein
+at dinner. A shake is the cheapest catch-up in calories; solid food is better
+when the day has been mostly powder already.
+
+If the gap can no longer close inside the calorie target, do not chase it.
+Name the shortfall plainly, land the day in the target, and say the one thing
+that would fix it tomorrow — almost always a bigger protein breakfast.
+
 ## What to say
 
 **Open with the position, in one or two lines.** Calories eaten and left, protein eaten,
