@@ -285,6 +285,33 @@ describe('accented aliases', () => {
   })
 })
 
+describe('a count that means pieces, not servings', () => {
+  // The real case: `Scrambled eggs 4` meant four eggs and logged four 150 g
+  // servings — 600 g, 948 kcal, against about 330 for what was on the plate.
+  const table = buildTable([
+    { key: 'tojasrantotta', aliases: ['tojasrantotta', 'scrambled eggs'], basis: 'per100g',
+      defaultGrams: 210, unitGrams: 52.5, defaultState: 'raw',
+      raw: { proteinG: 11, carbsG: 1.5, fatG: 12 } },
+  ])
+  const grams = (text: string) => {
+    const r = parseMessage(text, at('09:00'), table)
+    return r.ok ? r.items[0]!.grams : null
+  }
+
+  it('counts pieces when the food says how much one piece weighs', () => {
+    expect(grams('scrambled eggs 4')).toBe(210)
+    expect(grams('3 tojasrantotta')).toBe(157.5)
+  })
+
+  it('still takes the usual serving when nothing is counted', () => {
+    expect(grams('tojasrantotta')).toBe(210)
+  })
+
+  it('still lets a weight win', () => {
+    expect(grams('tojasrantotta 180g')).toBe(180)
+  })
+})
+
 describe('a portion nobody eats', () => {
   it('refuses a bare number read as a count when the result is absurd', () => {
     // The real case: `Whey 29` meant 29 grams and logged 29 scoops —

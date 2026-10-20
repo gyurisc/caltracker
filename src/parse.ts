@@ -294,6 +294,10 @@ function buildItem(entry: FoodEntry, segment: string, mealTag: MealTag | null): 
     finalGrams = portion * (count ?? 1) * (fraction ?? 1)
   } else if (entry.basis === 'each') {
     finalGrams = unit * (count ?? 1) * (fraction ?? 1)
+  } else if (count != null && entry.unitGrams != null) {
+    // A per-100 g dish made of countable pieces: `scrambled eggs 4` is four
+    // eggs, not four servings — that reading logged 948 kcal for about 330.
+    finalGrams = entry.unitGrams * count * (fraction ?? 1)
   } else {
     finalGrams = (entry.defaultGrams ?? 100) * (count ?? 1) * (fraction ?? 1)
   }
