@@ -1,6 +1,7 @@
 import { existsSync, rmSync } from 'node:fs'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import type { VisionItem } from '../vision.ts'
+import type { VisionItem, VisionLabel } from '../vision.ts'
+import { deriveKcal } from '../nutrition.ts'
 
 /**
  * Drives the real bot handler with synthetic updates — no network, no Telegram.
@@ -666,5 +667,108 @@ describe('a command pasted as monospace', () => {
       message: { ...u.message, text, entities: [{ type: 'pre', offset: 0, length: text.length }] },
     } as never)
     expect(sent.at(-1)).toContain('added pasted fizz')
+  })
+})
+
+describe('a label photo whose caption gives the amount', () => {
+  let captionAmount: typeof import('./index.ts').captionAmount
+  let labelCard: typeof import('./index.ts').labelCard
+  let put: typeof import('../pending.ts').put
+  let findFood: typeof import('../vocab.ts').findFood
+  let saveFood: typeof import('../vocab.ts').saveFood
+
+  beforeAll(async () => {
+    ;({ captionAmount, labelCard } = await import('./index.ts'))
+    ;({ put } = await import('../pending.ts'))
+    ;({ findFood, saveFood } = await import('../vocab.ts'))
+  })
+
+  const label = (name: string, over: Partial<VisionLabel> = {}): VisionLabel => ({
+    kind: 'label', name, basis: 'per100g', unitGrams: null,
+    proteinG: 9.1, carbsG: 48.2, fatG: 35, fibreG: null, kcal: 544, kcalDisputed: false, ...over,
+  })
+
+  const press = (data: string, id = Math.floor(Math.random() * 1e6)) => ({
+    update_id: id,
+    callback_query: {
+      id: String(id),
+      from: { id: OWNER, is_bot: false, first_name: 'k' },
+      chat_instance: '1',
+      data,
+      message: { message_id: id, date: 0, chat: { id: OWNER, type: 'private' as const }, text: 'card' },
+    },
+  })
+
+  it('reads a weight out of the caption', () => {
+    // `Csoki 40g` sent with a chocolate label: the 40 g was thrown away and had
+    // to be typed again once the food existed.
+    expect(captionAmount('Csoki 40g', 'per100g')).toBe('40g')
+    expect(captionAmount('csoki 40 gramm', 'per100g')).toBe('40g')
+    expect(captionAmount('kefir 250 ml', 'per100g')).toBe('250ml')
+    expect(captionAmount('fél tábla 37,5g', 'per100g')).toBe('37.5g')
+  })
+
+  it('reads a bare count only for a food counted in pieces', () => {
+    expect(captionAmount('bagel 2', 'each')).toBe('2')
+    // On a per-100 g label a bare number says nothing about grams.
+    expect(captionAmount('bagel 2', 'per100g')).toBeNull()
+  })
+
+  it('finds nothing in a caption without an amount', () => {
+    expect(captionAmount('csoki', 'per100g')).toBeNull()
+    expect(captionAmount('', 'per100g')).toBeNull()
+  })
+
+  it('offers to log the amount on the card', () => {
+    const card = labelCard(label('testchoco'), '40g', undefined)
+    expect(card).toContain('add it and log 40g?')
+  })
+
+  it('warns when the label would replace a food you already have', () => {
+    // Accepting a `skyr` label silently rewrote the plain skyr row.
+    const card = labelCard(label('skyr'), null, {
+      key: 'skyr', aliases: ['skyr'], basis: 'per100g', defaultState: 'raw',
+      provenance: 'reference', raw: { proteinG: 11, carbsG: 4, fatG: 0.2 },
+    })
+    expect(card).toContain('replaces your existing "skyr"')
+  })
+
+  it('says nothing about replacing when the name is new', () => {
+    expect(labelCard(label('testchoco'), null, undefined)).not.toContain('replaces')
+  })
+
+  it('adds the food and logs the caption amount in one tap', async () => {
+    const key = put({ kind: 'label', label: label('testchoco bar'), amount: '40g', photoId: null })
+    await bot.handleUpdate(press(`addlog:${key}`) as never)
+
+    expect(findFood('testchoco bar')).toBeDefined()
+    const row = foods().find((f) => f.name === 'testchoco bar')
+    expect(row?.grams).toBe(40)
+    // 40 g of 9.1 / 48.2 / 35 per 100 g.
+    expect(row?.kcal).toBe(Math.round(deriveKcal(3.64, 19.28, 14)))
+    expect(edited.at(-1)).toContain('added testchoco bar')
+    expect(edited.at(-1)).toContain('+ testchoco bar')
+  })
+
+  it('adds without logging when asked to add only', async () => {
+    const key = put({ kind: 'label', label: label('testchoco plain'), amount: '40g', photoId: null })
+    await bot.handleUpdate(press(`add:${key}`) as never)
+
+    expect(findFood('testchoco plain')).toBeDefined()
+    expect(foods().some((f) => f.name === 'testchoco plain')).toBe(false)
+  })
+
+  it('replaces the existing row, not a second row under the same name', async () => {
+    saveFood({
+      key: 'testskyr', aliases: ['testskyr', 'testskyr natur'], basis: 'per100g', defaultState: 'raw',
+      provenance: 'reference', raw: { proteinG: 11, carbsG: 4, fatG: 0.2 },
+    })
+    const key = put({ kind: 'label', label: label('testskyr natur', { proteinG: 8 }), amount: null, photoId: null })
+    await bot.handleUpdate(press(`add:${key}`) as never)
+
+    // Matched by an alias: the label lands on that row, so the name does not
+    // answer to two foods at once.
+    expect(findFood('testskyr natur')?.key).toBe('testskyr')
+    expect(findFood('testskyr natur')?.raw?.proteinG).toBe(8)
   })
 })

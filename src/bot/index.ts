@@ -18,7 +18,8 @@ import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
 import { addAlias, findFood, removeFood, saveFood, vocabTable } from '../vocab.ts'
 import { latestMeal, put as putPending, replace as replacePending, take as takePending } from '../pending.ts'
 import { parseCorrection, targetIndex } from '../correction.ts'
-import { prepareImage, readPrepared, type VisionItem } from '../vision.ts'
+import { prepareImage, readPrepared, type VisionItem, type VisionLabel } from '../vision.ts'
+import type { FoodEntry } from '../foods.ts'
 import { deletePhoto, readPhoto as readStoredPhoto, savePhoto } from '../photos.ts'
 import {
   askCoach, COACH_MARK, forget, historyFor, isCoachMessage, remember, telegramMarkdown, type Turn,
@@ -201,6 +202,44 @@ function unusedCaptionWords(caption: string, items: VisionItem[]): string[] {
     .filter((w) => w.length > 2 && !/^\d+$/.test(w))
     .filter((w) => !['gramm', 'gram', 'and', 'with', 'egy'].includes(w))
     .filter((w) => !names.includes(w))
+}
+
+/**
+ * The amount a label photo's caption gave, as the parser would read it.
+ *
+ * `Csoki 40g` with a chocolate label used to add the food and throw the 40 g
+ * away, so it had to be typed again. A bare number is a count only on a food
+ * counted in pieces; on a per-100 g label it says nothing about grams.
+ */
+export function captionAmount(caption: string, basis: 'per100g' | 'each'): string | null {
+  const weight = caption.toLowerCase().match(/(\d+(?:[.,]\d+)?)\s*(ml|grammot|gramm|grams|gram|gr|g)(?![\p{L}])/u)
+  if (weight) return `${weight[1]!.replace(',', '.')}${weight[2] === 'ml' ? 'ml' : 'g'}`
+  if (basis !== 'each') return null
+  const count = caption.match(/(?:^|\s)(\d+)(?:\s*db)?(?=\s|$)/)
+  return count ? count[1]! : null
+}
+
+export function labelCard(l: VisionLabel, amount: string | null, existing: FoodEntry | undefined): string {
+  const per = l.basis === 'each' ? `each ${l.unitGrams ?? '?'} g` : 'per 100 g'
+  const old = existing?.raw ?? existing?.cooked
+  return [
+    `label · ${l.name} · ${per}`,
+    `${n(l.kcal)} kcal · ${l.proteinG} g P · ${l.carbsG} g C · ${l.fatG} g F`,
+    ...(l.fibreG
+      ? [`fibre ${l.fibreG} g · counting half of it as carbs, which is what makes the energy match`]
+      : []),
+    ...(l.kcalDisputed ? ['the printed energy disagrees with the macros; keeping the macros'] : []),
+    // Accepting a `skyr` label once rewrote the plain skyr row without a word.
+    ...(existing
+      ? [
+          '',
+          `⚠️ replaces your existing "${existing.key}"${old ? ` (${old.proteinG} g P · ${old.carbsG} g C · ${old.fatG} g F)` : ''}`,
+          `to keep both, cancel and use /food <other name> per100 p${l.proteinG} c${l.carbsG} f${l.fatG}`,
+        ]
+      : []),
+    '',
+    amount ? `add it and log ${amount}?` : 'add it to your table?',
+  ].join('\n')
 }
 
 export function mealCard(
@@ -826,7 +865,9 @@ export function createBot(): Bot {
 
     if (result.read.kind === 'label') {
       const l = result.read
-      const key = putPending({ kind: 'label', label: l, photoId })
+      const amount = captionAmount(caption, l.basis)
+      const existing = findFood(l.name)
+      const key = putPending({ kind: 'label', label: l, amount, photoId })
       logEvent('vision', {
         action: 'proposed',
         card: 'label',
@@ -834,22 +875,16 @@ export function createBot(): Bot {
         basis: l.basis,
         kcal: l.kcal,
         kcalDisputed: l.kcalDisputed,
-        alreadyKnown: Boolean(findFood(l.name)),
+        alreadyKnown: Boolean(existing),
+        amount,
       })
-      const per = l.basis === 'each' ? `each ${l.unitGrams ?? '?'} g` : 'per 100 g'
+      const buttons = amount
+        ? new InlineKeyboard().text(`Add + log ${amount}`, `addlog:${key}`).text('Add only', `add:${key}`)
+        : new InlineKeyboard().text('Add food', `add:${key}`)
       return ctx.api.editMessageText(
         note.chat.id, note.message_id,
-        [
-          `label · ${l.name} · ${per}`,
-          `${n(l.kcal)} kcal · ${l.proteinG} g P · ${l.carbsG} g C · ${l.fatG} g F`,
-          ...(l.fibreG
-          ? [`fibre ${l.fibreG} g · counting half of it as carbs, which is what makes the energy match`]
-          : []),
-          ...(l.kcalDisputed ? ['the printed energy disagrees with the macros; keeping the macros'] : []),
-          '',
-          'add it to your table?',
-        ].join('\n'),
-        { reply_markup: new InlineKeyboard().text('Add food', `add:${key}`).text('Cancel', `no:${key}`) },
+        labelCard(l, amount, existing),
+        { reply_markup: buttons.text('Cancel', `no:${key}`) },
       )
     }
 
@@ -946,15 +981,19 @@ export function createBot(): Bot {
       return ctx.answerCallbackQuery('expired')
     }
 
-    if (action === 'add' && pending.kind === 'label') {
+    if ((action === 'add' || action === 'addlog') && pending.kind === 'label') {
       const l = pending.label
       // An EU label's carbohydrate excludes fibre, but the fibre still carries
       // roughly 2 kcal/g. Half of it added to carbs is what makes 4/4/9 land on
       // the printed energy — 61 g on the rye thins derives 307 against 350.
       const carbsG = l.carbsG + (l.fibreG ? l.fibreG / 2 : 0)
+      // A name that already answers to a food lands on that row, which the card
+      // warned about. A new row under the existing key's alias would leave one
+      // name meaning two foods.
+      const existing = findFood(l.name)
       saveFood({
-        key: l.name,
-        aliases: [l.name],
+        key: existing?.key ?? l.name,
+        aliases: existing ? existing.aliases : [l.name],
         basis: l.basis,
         ...(l.basis === 'each' && l.unitGrams ? { unitGrams: l.unitGrams } : {}),
         defaultState: 'raw',
@@ -964,14 +1003,27 @@ export function createBot(): Bot {
       })
       const kcal = deriveKcal(l.proteinG, carbsG, l.fatG)
       logEvent('vision', { action: 'accepted', card: 'label', name: l.name, kcal })
-      await ctx.editMessageText(
-        [
-          `added ${l.name} · ${n(kcal)} kcal per 100 g`,
-          `${l.proteinG} g P · ${round1(carbsG)} g C · ${l.fatG} g F · measured`,
-          '',
-          `try: ${l.name} 100g`,
-        ].join('\n'),
-      )
+      const added = [
+        `added ${l.name} · ${n(kcal)} kcal per 100 g`,
+        `${l.proteinG} g P · ${round1(carbsG)} g C · ${l.fatG} g F · measured`,
+      ]
+
+      // The caption's amount goes through the one logging path, as if typed.
+      const line = `${l.name} ${pending.amount ?? ''}`.trim()
+      if (action === 'addlog' && pending.amount) {
+        const res = logText(line, { photoId: pending.photoId ?? null })
+        if (res.ok) {
+          const logged = res.rows.reduce((sum, r) => sum + r.kcal, 0)
+          await ctx.editMessageText(
+            [...added, '', `+ ${res.rows.map((r) => r.name).join(', ')} · ${n(logged)} kcal · ${todayLine()}`].join('\n'),
+          )
+          return ctx.answerCallbackQuery('added and logged')
+        }
+        await ctx.editMessageText([...added, '', `could not log it${res.unmatched.length ? ` — did not know: ${res.unmatched.join(', ')}` : ''}`, `try: ${line}`].join('\n'))
+        return ctx.answerCallbackQuery('added, not logged')
+      }
+
+      await ctx.editMessageText([...added, '', `try: ${pending.amount ? line : `${l.name} 100g`}`].join('\n'))
       return ctx.answerCallbackQuery('added')
     }
 

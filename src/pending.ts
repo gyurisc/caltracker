@@ -27,7 +27,8 @@ export type PendingCard =
       /** The stored photo these rows came from, carried onto every row logged. */
       photoId?: string | null
     }
-  | { kind: 'label'; label: VisionLabel; photoId?: string | null }
+  /** `amount` is what the caption said, `40g` or `2`, logged on Add + log. */
+  | { kind: 'label'; label: VisionLabel; amount?: string | null; photoId?: string | null }
   /**
    * A photo whose caption was already a complete log line, so it was written
    * straight away. Held only so the escape hatch works: if the caption was not
