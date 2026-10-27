@@ -14,7 +14,7 @@ import {
   calibrationReport, n, todayLine, todayReport, visionReport, vocabReport, waistReport,
   whoopReport,
 } from '../report.ts'
-import { isWithinUndoWindow, logText, UNDO_WINDOW_HOURS } from '../service.ts'
+import { isWithinUndoWindow, logAgain, logText, UNDO_WINDOW_HOURS } from '../service.ts'
 import { addAlias, findFood, removeFood, saveFood, vocabTable } from '../vocab.ts'
 import { latestMeal, put as putPending, replace as replacePending, take as takePending } from '../pending.ts'
 import { parseCorrection, targetIndex } from '../correction.ts'
@@ -380,6 +380,7 @@ export function createBot(): Bot {
         '/weight 74.2 — morning weigh-in',
         '/activity rest|lift|cycle',
         '/steps 12000 — yesterday, from your phone',
+        '/again · /again 200g · /again x2 — the last item once more',
         '/undo — remove the most recent item',
         '/undo milk · /undo 09:17 — remove any of today\'s',
         '/target — maintenance, deficit, goals',
@@ -660,6 +661,13 @@ export function createBot(): Bot {
     const day = setActivity(localDate(), activity)
     const s = getSettings()
     return ctx.reply(`${activityLabel(day.activity)} · target ${n(targetKcal(day.activity, s))} kcal`)
+  })
+
+  bot.command('again', (ctx) => {
+    const res = logAgain((ctx.match ?? '').toString())
+    if (!res.ok) return ctx.reply(res.error)
+    const r = res.row
+    return ctx.reply(`+ ${r.name}${r.grams != null ? ` · ${n(r.grams)} g` : ''} · ${n(r.kcal)} kcal · ${todayLine()} (again)`)
   })
 
   bot.command('undo', (ctx) => {

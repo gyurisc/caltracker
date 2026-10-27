@@ -772,3 +772,69 @@ describe('a label photo whose caption gives the amount', () => {
     expect(findFood('testskyr natur')?.raw?.proteinG).toBe(8)
   })
 })
+
+describe('/again repeats the last item', () => {
+  let addFoods: typeof import('../db.ts').addFoods
+  beforeAll(async () => { ;({ addFoods } = await import('../db.ts')) })
+
+  type Row = { name: string; grams: number | null; protein_g: number; carbs_g: number; fat_g: number; kcal: number }
+  const rows = () => db.prepare('SELECT * FROM foods ORDER BY rowid').all() as Row[]
+  const pizza = () => addFoods([{
+    name: 'testpizza', grams: 130, cooked: true, proteinG: 14, carbsG: 33, fatG: 12, kcal: 296,
+    source: 'photo', provenance: 'reference',
+  }])
+
+  it('says so when there is nothing to repeat', async () => {
+    db.prepare('DELETE FROM foods').run()
+    await bot.handleUpdate(update(OWNER, '/again') as never)
+    expect(sent.at(-1)).toContain('nothing to repeat')
+  })
+
+  it('logs the same item at the same weight', async () => {
+    // A second slice of a pizza that only ever came from a photo, so it is not
+    // in the table and typing its name is refused.
+    pizza()
+    await bot.handleUpdate(update(OWNER, '/again') as never)
+    const last = rows().at(-1)!
+    expect(rows()).toHaveLength(2)
+    expect(last).toMatchObject({ name: 'testpizza', grams: 130, protein_g: 14, kcal: 296 })
+    expect(sent.at(-1)).toContain('+ testpizza · 130 g · 296 kcal')
+  })
+
+  it('scales everything to a new weight', async () => {
+    await bot.handleUpdate(update(OWNER, '/again 200g') as never)
+    expect(rows().at(-1)).toMatchObject({ grams: 200, protein_g: 21.5, carbs_g: 50.8, fat_g: 18.5, kcal: 455 })
+  })
+
+  it('reads a bare number as grams', async () => {
+    await bot.handleUpdate(update(OWNER, '/again 65') as never)
+    expect(rows().at(-1)).toMatchObject({ grams: 65 })
+  })
+
+  it('multiplies the last portion by x2 or halves it with fél', async () => {
+    pizza()
+    await bot.handleUpdate(update(OWNER, '/again x2') as never)
+    expect(rows().at(-1)).toMatchObject({ grams: 260, kcal: 592 })
+    pizza()
+    await bot.handleUpdate(update(OWNER, '/again fél') as never)
+    expect(rows().at(-1)).toMatchObject({ grams: 65, kcal: 148 })
+  })
+
+  it('refuses a weight for an item logged without one', async () => {
+    addFoods([{ name: 'testegg', grams: null, proteinG: 6, carbsG: 0.5, fatG: 5, kcal: 72, source: 'text' }])
+    const before = rows().length
+    await bot.handleUpdate(update(OWNER, '/again 100g') as never)
+    expect(rows()).toHaveLength(before)
+    expect(sent.at(-1)).toContain('no weight')
+
+    await bot.handleUpdate(update(OWNER, '/again x2') as never)
+    expect(rows().at(-1)).toMatchObject({ name: 'testegg', kcal: 144 })
+  })
+
+  it('refuses what it cannot read rather than guessing', async () => {
+    const before = rows().length
+    await bot.handleUpdate(update(OWNER, '/again lots') as never)
+    expect(rows()).toHaveLength(before)
+    expect(sent.at(-1)).toContain('usage:')
+  })
+})
